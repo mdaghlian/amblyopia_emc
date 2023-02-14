@@ -1,0 +1,25 @@
+[------------- Fit types -------------]
+[A] All vx, bgfs, include scotoma
+[B] All vx, bgfs, ignore scotoma
+[C] V1  vx,   tc, include scotoma
+[D] V1  vx,   tc, ignore scotoma
+[------------- Fit types -------------]
+
+[############## PART 1 ##############]
+Get the fMRI time series for each condition. This is the same for all fit types
+>> *** TO DO *** 
+
+[############## PART 2 ##############]
+Fit the data time series using a gauss & norm PRF models
+**************************************
+For fit type [A] (ALL vx, bgfs, incude scotoma)
+>> python qsub_data_fits.py --roi_fit all --dm_fit standard --bgfs
+**************************************
+For fit type [B] (ALL vx, bgfs, ignore scotoma)
+>> python qsub_data_fits.py --roi_fit all --dm_fit AS0 --bgfs
+**************************************
+For fit type [C] (V1 vx, tc, incude scotoma)
+>> python qsub_data_fits.py --roi_fit V1 --dm_fit standard --tc
+**************************************
+For fit type [D] (V1 vx, tc, ignore scotoma)
+>> python qsub_data_fits.py --roi_fit V1 --dm_fit AS0 --tc
