@@ -8,7 +8,7 @@ from .utils import *
 from .plot_functions import *
 from prfpy.rf import gauss2D_iso_cart
 from prfpy.model import Iso2DGaussianModel, Norm_Iso2DGaussianModel
-from .plot_shifts import *
+from ..plot_shifts import *
 
 
 class AllPrfInfo(object):

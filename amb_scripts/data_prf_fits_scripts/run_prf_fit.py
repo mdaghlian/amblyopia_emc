@@ -3,30 +3,23 @@
 #$ -cwd
 #$ -V
 
-import ast
 import getopt
 from linescanning import (
     prf,
     utils,
-    # dataset
 )
 import numpy as np
-import nibabel as nb
 import os
-from scipy import io
 import sys
 import warnings
-import json
-import pickle
 from joblib import parallel_backend
 warnings.filterwarnings('ignore')
 opj = os.path.join
 
-from pfa_scripts.load_saved_info import get_design_matrix_npy, get_real_tc, get_roi, get_number_of_vx
-from pfa_scripts.utils import hyphen_parse
+from amb_scripts.load_saved_info import *
 
-source_data_dir = os.getenv("DIR_DATA_SOURCE")
-derivatives_dir = os.getenv("DIR_DATA_DERIV")
+source_data_dir = '/data1/projects/dumoulinlab/Lab_members/Marcus/projects/amblyopia_emc/sourcedata'#
+derivatives_dir = '/data1/projects/dumoulinlab/Lab_members/Marcus/projects/amblyopia_emc/derivatives'
 
 def main(argv):
 
@@ -41,15 +34,14 @@ Fit the real time series using the gaussian and normalisation model
 
 Args:
     -s (--sub=)         e.g., 01
-    -t (--task=)        AS0,AS1,AS2
+    -t (--task=)        pRFLE,pRFRE,CSFLE,CSFRE
     -m (--model=)       gauss or norm
-    -r (--roi_fit=)     all, core
-    -d (--dm_fit=)      are we fitting using the actual dm? 'standard'
-                        Or using ignoring the scotoma? 'dm-AS0'
+    -r (--roi_fit=)     all, V1_exvivo
 
     --verbose
-    --tc                
+    --tc                Which fitter using? tc, lgbfs
     --bgfs                         
+    --hrf               Fit HRF?
 
 Example:
 
@@ -62,12 +54,10 @@ Example:
     task = None
     model = None
     roi_fit = None
-    dm_fit = None
     fit_hrf = False
     verbose = True
     constraints = None
-    prf_out = 'prf'    
-
+    prf_out = 'amb-prf'    
 
     try:
         opts = getopt.getopt(argv,"qp:s:t:m:r:d:c:",[
@@ -87,13 +77,11 @@ Example:
             sub = hyphen_parse('sub', arg)
 
         elif opt in ("-t", "--task"):
-            task = hyphen_parse('task', arg)
+            task = arg #hyphen_parse('task', arg)
         elif opt in ("-m", "--model"):
             model = arg
         elif opt in ("-r", "--roi_fit"):
             roi_fit = arg
-        elif opt in ("-d", "--dm_fit"):
-            dm_fit = arg
         elif opt in ("--prf_out"):
             prf_out = arg        
         elif opt in ("--verbose"):
@@ -112,9 +100,11 @@ Example:
         print(main.__doc__)
         sys.exit()
 
-    prf_dir = opj(derivatives_dir, prf_out)
     # Determine the labels - needed for saving the file
-    print(f'data{sub}_{task}_{model}_{roi_fit}_{dm_fit}')
+    print(f'data{sub}_{task}_{model}_{roi_fit}')
+    prf_dir = opj(derivatives_dir, prf_out)
+    if not os.path.exists(prf_dir): 
+        os.mkdir(prf_dir)    
     # CREATE THE DIRECTORY TO SAVE THE PRFs
     if not os.path.exists(opj(prf_dir, sub)): 
         os.mkdir(opj(prf_dir, sub))
@@ -124,46 +114,30 @@ Example:
     outputdir = opj(prf_dir, sub, ses)
 
     # LOAD THE RELEVANT TIME COURSES AND DESIGN MATRICES    
-    num_vx = get_number_of_vx(sub=sub)
-    m_prf_tc_data = get_real_tc(sub=sub, task_list=task)[task].T
+    tc_data = amb_load_real_tc(sub=sub, task_list=task)[task].T
     # Are we limiting the fits to an roi?
+
+    print('Fitting {roi_fit} ')
+    roi_mask = amb_load_roi(sub=sub, roi=roi_fit)
     if roi_fit=='all':
         print('fitting ALL voxels')
         if constraints=='tc':
             print('warning - tc for full brain is too long...')            
         pass
-        roi_mask = get_roi(sub=sub, label=roi_fit)
-
-    elif roi_fit=='core-vis':
-        print('Fitting core visual regions ')
-        roi_list = ['v1', 'v2', 'v3','v3ab', 'v4', 'LO','TO', 'lowerIPS', 'upperIPS']
-        roi_mask = get_roi(sub=sub, label=roi_list)
-        
-    else: 
-        print('Fitting {roi_fit} ')
-        roi_mask = get_roi(sub=sub, label=roi_fit)    
 
     # initialize empty array and only keep the timecourses from label; keeps the original dimensions for simplicity sake! You can always retrieve the label indices with linescanning.optimal.SurfaceCalc
-    empty = np.zeros_like(m_prf_tc_data)
+    empty = np.zeros_like(tc_data)
 
     # insert timecourses 
     lbl_true = np.where(roi_mask == True)[0]
-    empty[:,lbl_true] = m_prf_tc_data[:,lbl_true]
+    empty[:,lbl_true] = tc_data[:,lbl_true]
 
     # overwrite m_prf_tc_data
-    m_prf_tc_data = empty.copy()    
+    tc_data = empty.copy()
 
-    # Check mask is the correct shape
-    assert roi_mask.shape[0]==num_vx
-    assert m_prf_tc_data.shape[-1]==num_vx
-
-    if not 'AS0' in dm_fit:
-        design_matrix = get_design_matrix_npy([task])[task] 
-    else:
-        # ALWAYS USING TASK AS0
-        design_matrix = get_design_matrix_npy(['task-AS0'])['task-AS0'] 
-        
-    out = f"{sub}_{ses}_{task}_{hyphen_parse('roi', roi_fit)}_{hyphen_parse('dm', dm_fit)}_data-fits"
+    # Design matrix
+    design_matrix = amb_load_dm('prf')['prf']        
+    out = f"{sub}_{ses}_{task}_{hyphen_parse('roi', roi_fit)}_data-fits"
     # Check for old parameters:
     if model=='gauss':
         old_grid_gauss = utils.get_file_from_substring([out, 'gauss', 'grid'], outputdir, return_msg=None)
@@ -181,7 +155,7 @@ Example:
         
         # stage 1 - no HRF
         stage1 = prf.pRFmodelFitting(
-            m_prf_tc_data.T, 
+            tc_data.T, 
             design_matrix=design_matrix, 
             TR=1.5, 
             model=model, 
@@ -211,7 +185,7 @@ Example:
 
             # initiate fitter object with previous fitter
             stage2 = prf.pRFmodelFitting(
-                m_prf_tc_data.T, 
+                tc_data.T, 
                 design_matrix=stage1.design, 
                 TR=stage1.TR, 
                 model=model, 

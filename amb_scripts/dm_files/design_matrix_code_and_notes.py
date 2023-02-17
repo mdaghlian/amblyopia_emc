@@ -55,3 +55,8 @@ hires_binary_dm = (hires_tr_images!=128)*1.0 #keep as float
 prf_design_matrix = resample2d(hires_binary_dm, n_pix) # Downsample
 
 np.save('prf_design_matrix', prf_design_matrix)
+
+
+'''
+Now to make the CSF design matrix
+'''

@@ -8,7 +8,7 @@ from matplotlib import patches
 import linescanning.plotting as lsplt
 from scipy.stats import binned_statistic
 from highlight_text import HighlightText, ax_text, fig_text
-from .utils import coord_convert, get_d2_target, get_d2_target_change, print_p
+from .utils import coord_convert, print_p
 # import rgba
 # import os 
 # import nibabel as nb
@@ -47,41 +47,12 @@ def get_plot_cols():
 # rgba(152,  0, 67, 1)
 
     plot_cols = {
-        "task-AS0_real"    : rgba(252,141, 89, .8),#'#fd8d3c',
-        "task-AS0_gauss"   : rgba(227, 74, 51, .8),#'#f03b20',
-        "task-AS0_norm"    : rgba(140,  0,  0, .8),#'#bd0026',
-        "task-AS1_dog"     : rgba(  0,  0,  0, .8),#'#980043',
-        #
-        "task-AS1_real"    : rgba(123,204,196, .8),#'#7bccc4',
-        "task-AS1_gauss"   : rgba( 67,162,202, .8),#'#43a2ca',
-        "task-AS1_norm"    : rgba(  8, 50,172, .8),#'#0868ac',
-        "task-AS1_dog"     : rgba(  0,  0,  0, .8),#'#980043',
-        #
-        "task-AS2_real"    : rgba(223,101,176, .8),#'#df65b0',
-        "task-AS2_gauss"   : rgba(221, 28,119, .8),#'#dd1c77',
-        "task-AS2_norm"    : rgba(100,  0, 67, .8),#'#980043',
-        "task-AS2_dog"     : rgba(  0,  0,  0, .8),#'#980043',
+        "LE"            : rgba(252,141, 89, .8),#'#fd8d3c',
+        "RE"            : rgba( 67,162,202, .8),#'#43a2ca',
         #
         "gauss"          : rgba( 27, 158, 119, 0.9),
-        "GAUSS"          : rgba( 27, 158, 119, 0.5),
         "norm"           : rgba(217,  95,   2, 0.5),
-        "NORM"           : rgba(217,  95,   2, 0.5),
-        "dog"            : rgba(217, 200,   2, 0.5),
-        "DOG"            : rgba(217, 200,   2, 0.5),
-        "css"            : rgba(150,  95,   2, 0.5),
-        "CSS"            : rgba(150,  95,   2, 0.5),        
-        "DATA"           : rgba(117, 112, 179, 0.5),
-        "data"           : rgba(117, 112, 179, 0.5),
         "real"           : '#cccccc',
-        "SIMULATION"     : rgba(231,  41, 138, 0.5),
-        "simulation"     : rgba(231,  41, 138, 0.5),
-        "task-AS0"       : rgba(  0,   0,   0, 0.5),
-        "AS0"            : rgba(  0,   0,   0, 0.5),
-        "task-AS1"       : rgba(102, 166,  30, 0.5),
-        "AS1"            : rgba(102, 166,  30, 0.5),
-        "task-AS2"       : rgba(230, 171,   2, 0.5),
-        "AS2"            : rgba(230, 171,   2, 0.5),
-        "task-2R"        : rgba(200,   0,   0, 0.5),        
         }
     return plot_cols
 
@@ -360,7 +331,6 @@ def basic_arrow_plot(old_x, old_y, new_x, new_y, axs, **kwargs):
     new_col = kwargs.get("new_col", "r")
     dot_alpha = kwargs.get("alpha", 0.5)
     incl_patches = kwargs.get("incl_patches", True)
-    do_shift_arrows = kwargs.get("do_shift_arrows", False)
     patch_col = kwargs.get("patch_col", 'k')
 
     if do_binning:
@@ -411,30 +381,7 @@ def basic_arrow_plot(old_x, old_y, new_x, new_y, axs, **kwargs):
     axs.scatter(new_x2plot, new_y2plot, color=new_col, s=100, alpha=dot_alpha)
     
     # Add the arrows 
-    if not do_shift_arrows: # Arrows all the same color
-        axs.quiver(old_x2plot, old_y2plot, dx, dy, scale_units='xy', angles='xy', alpha=dot_alpha, scale=1)
-    if do_shift_arrows: # Arrows different colors if going towards or away from the scotoma   
-        # [1] Get change in d2 scotoma 
-        _,_,d2_scot_change = get_d2_target_change(
-            old_x2plot,old_y2plot,new_x2plot,new_y2plot,
-            scotoma_info, edge_or_com='com')
-        inward_idx = d2_scot_change<=0
-        in_col = 'r'
-        out_col = 'b'
-        axs.quiver(
-            old_x2plot[inward_idx], 
-            old_y2plot[inward_idx], 
-            dx[inward_idx], 
-            dy[inward_idx], 
-            color=in_col, scale_units='xy', angles='xy', alpha=dot_alpha, scale=1)
-
-        axs.quiver(
-            old_x2plot[~inward_idx], 
-            old_y2plot[~inward_idx], 
-            dx[~inward_idx], 
-            dy[~inward_idx], 
-            color=out_col, scale_units='xy', angles='xy', alpha=dot_alpha, scale=1)
-
+    axs.quiver(old_x2plot, old_y2plot, dx, dy, scale_units='xy', angles='xy', alpha=dot_alpha, scale=1)
 
     if len(ecc_bounds)>0:
         add_scot_patches_and_bin_lines(axs, ecc_bounds, pol_bounds, scotoma_info=scotoma_info, incl_patches=incl_patches, patch_col=patch_col)
@@ -484,47 +431,6 @@ def add_scot_patches_and_bin_lines(axs, ecc_bounds=[], pol_bounds=[], scotoma_in
         if scotoma_info['scotoma_centre']!=[]: # Only add scotoma info if it exists...       
             scot = patches.Circle(scotoma_info["scotoma_centre"], scotoma_info["scotoma_radius"], color=patch_col, linewidth=8, fill=False, alpha=0.6)
             axs.add_patch(scot)
-
-def d2_scot_plot(x, y, new_x, new_y, scotoma_info, edge_or_com='com',  **kwargs):
-    # GET PARAMETERS....
-    axs=kwargs.get("axs", [])    
-    col=kwargs.get("col", "k")    
-    line_label=kwargs.get("line_label", " ")
-    y_label=kwargs.get("y_label", "")
-    axs_title=kwargs.get("axs_title", "")
-    y_lim=kwargs.get("y_lim", [])
-    n_bins=kwargs.get("n_bins", 10)
-    d2_range=kwargs.get("d2_range", (0,2*scotoma_info['aperture_rad']))
-    do_scatter=kwargs.get("do_scatter", True)
-    do_line=kwargs.get("do_line", True)
-    do_plot =kwargs.get("do_plot", True) 
-    
-    d2_target_old, d2_target_new, change_in_d2_target = get_d2_target_change(x,y,new_x,new_y, scotoma_info, edge_or_com)
-    change_param = kwargs.get("change_param", change_in_d2_target)
-    d2_mean = binned_statistic(d2_target_old, d2_target_old, bins=n_bins,  range=d2_range, statistic='mean')[0]
-    d2_count = binned_statistic(d2_target_old, d2_target_old, bins=n_bins, range=d2_range, statistic='count')[0]
-    change_mean = binned_statistic(d2_target_old, change_param, bins=n_bins,  range=d2_range, statistic='mean')[0]                
-    change_stdE = binned_statistic(d2_target_old, change_param, bins=n_bins,  range=d2_range, statistic='std')[0]  / np.sqrt(d2_count)              
-
-    if do_plot:
-        if do_scatter:
-            axs.scatter(d2_target_old, change_param, color=col, alpha=0.5)
-
-        if do_line:
-            axs.errorbar(d2_mean, change_mean, change_stdE, color=col, linewidth=2, alpha=0.9, label=line_label, marker="s")                
-            axs.set_title(axs_title)
-            if not np.size(y_lim)==0:
-                axs.set_ylim(y_lim)
-        
-        axs.set_ylabel(y_label)
-        axs.set_xlabel(axs_title)
-        # axs.legend()
-        axs.plot(d2_range, (0, 0), color="k")
-
-        axs.set_xlim(d2_range)
-
-    return d2_mean, change_mean, change_stdE
-
 
 def plot_bin_line(X,Y,bin_using, **kwargs):
     # GET PARAMETERS....
@@ -636,58 +542,6 @@ def legend_check(axs):
             
 
 
-    
-def d2_scot_param_plot(x, y, d_param, scotoma_info, **kwargs):
-    # GET PARAMETERS....
-    axs=kwargs.get("axs", [])    
-    n_bins=kwargs.get("n_bins", 10)
-    scat_col=kwargs.get("scat_col", "r")    
-    line_col=kwargs.get("line_col", "r")    
-    line_label=kwargs.get("line_label", " ")
-    y_label=kwargs.get("y_label", "")
-    x_label=kwargs.get("x_label", "")
-    title=kwargs.get("title", [])
-    y_lim=kwargs.get("y_lim", [])
-    x_lim=kwargs.get("x_lim", [])
-    do_scatter=kwargs.get("do_scatter", False)
-    do_bin_line=kwargs.get("do_bin_line", True)
-    # x_lim
-
-    d2_target = get_d2_target(x,y,scotoma_info)
-
-    # [2] 
-    # d2_mean = binned_statistic(d2_target, d2_target, bins=n_bins, statistic='mean')[0]
-    # d2_count = binned_statistic(d2_target, d2_target, bins=n_bins, statistic='count')[0]
-    # d_param_m = binned_statistic(d2_target, d_param, bins=n_bins,  statistic='mean')[0]                
-    # d_param_std = binned_statistic(d2_target, d_param, bins=n_bins,  statistic='std')[0] / np.sqrt(d2_count)
-
-    if do_scatter:
-        axs.scatter(d2_target, d_param, color=scat_col, alpha=0.1)
-    
-    if do_bin_line:
-        plot_bin_line(
-            X=d2_target,Y=d_param,bin_using=d2_target, 
-            axs=axs, n_bins=n_bins, line_col=line_col, line_label=line_label
-            )
-
-    
-    # if not np.size(y_lim)==0:
-    #     axs.set_ylim(y_lim)
-    if x_lim!=[]:
-        axs.set_xlim(x_lim)
-    if title!=[]:
-        axs.set_title(title)
-    if y_label!=[]:
-        axs.set_ylabel(y_label)
-    if x_label!=[]:
-        axs.set_xlabel(x_label)
-    
-    if legend_check(axs):
-        axs.legend()
-
-    axs.plot((axs.get_xlim()), (0, 0), color="k")
-
-    return None
 
 def time_series_plot(params, prfpy_stim, real_tc=[], pred_tc=[], model='gauss', scotoma_info=[], show_stim_frame_x=[], **kwargs):
     # GET PARAMETERS....
