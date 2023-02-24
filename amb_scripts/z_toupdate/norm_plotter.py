@@ -41,7 +41,7 @@ class NormModelInfo(object):
         # add the aperture
         self.aperture = self.prfpy_stim.ecc_coordinates>(self.prfpy_stim.screen_size_degrees/2)
         # parameters associated with each idx 
-        self.p_labels = print_p()['norm_inv']
+        self.p_labels = print_p()['norm']
         self.params_dict = {}
         for this_label in self.p_labels.keys():
             this_id = self.p_labels[this_label]
@@ -419,7 +419,7 @@ class NormModelInfo(object):
 
     def add_prf_plot(self, task, model, i_vx, ax, show_stim_frame_x=[], this_prfpy_stim=[]):
         
-        model_idx = self.p_labels[f'{model}_inv']
+        model_idx = self.p_labels[model]
 
         this_params = self.model_params[task][model][i_vx,:]
         # ************* PRF (+stimulus) PLOT *************

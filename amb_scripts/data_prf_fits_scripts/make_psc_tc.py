@@ -68,7 +68,7 @@ for task in task_list:
     if 'pRF' in task:
         baseline = baseline_from_dm(dm['prf'], n_trs=7, cut_vols=5)
     elif 'CSF' in task:
-        baseline = baseline_from_dm(dm['sf_vect'], n_trs=7, cut_vols=5)
+        baseline = baseline_from_dm(dm['sf_vect'], n_trs=14, cut_vols=5)
         
     # get unique run-IDs
     run_ids = []

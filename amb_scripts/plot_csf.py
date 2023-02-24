@@ -8,20 +8,94 @@ import linescanning.plotting as lsplt
 import pandas as pd
 from scipy.stats import binned_statistic
 import cortex
+from .load_saved_info import *
 from .utils import coord_convert, print_p, rescale_bw, hyphen_parse
 from .plot_functions import *
 from .pyctx import *
+from prfpy.rf import csf_exponential
+
+
+
+def get_csf_curves(log_SFs, width_r, sf0, maxC, width_l):    
+    log_sf0 = np.log10(sf0)
+    log_maxC = np.log10(maxC)
+    
+    # Reshape for multiple RFs
+    log_SFs = np.tile(log_SFs, (width_l.shape[0],1))
+    #
+    width_r     = width_r[...,np.newaxis]
+    log_sf0     = log_sf0[...,np.newaxis]
+    log_maxC    = log_maxC[...,np.newaxis]
+    width_l     = width_l[...,np.newaxis]
+
+    id_L = log_SFs < log_sf0
+    id_R = log_SFs >= log_sf0
+
+    # L_curve 
+    L_curve = 10**(log_maxC - ((log_SFs - log_sf0)**2) * (width_l**2))
+    R_curve = 10**(log_maxC - ((log_SFs - log_sf0)**2) * (width_r**2))
+
+    csf_curve = np.zeros_like(L_curve)
+    csf_curve[id_L] = L_curve[id_L]
+    csf_curve[id_R] = R_curve[id_R]
+
+    return csf_curve
+
+
+def csf_tc_plotter(real_tc, pred_tc, params, idx):
+    CSF_stim = amb_load_prfpy_stim('CSF')
+    rfs = csf_exponential(
+        CSF_stim.log_SF_grid, 
+        CSF_stim.log_CON_S_grid, 
+        *list(params[:,0:4].T))
+    csf_curves = get_csf_curves(CSF_stim.log_SFs, *list(params[:,0:4].T))
+    #
+    fig, ax = plt.subplots(idx.shape[0], 3,gridspec_kw={'width_ratios': [2,2, 5]})    
+    fig.set_size_inches(15,idx.shape[0]*2.5)
+    xmin  = np.min(CSF_stim.log_SFs)
+    xmax  = np.max(CSF_stim.log_SFs)
+    ymin  = np.min(CSF_stim.log_CON_Ss)
+    ymax  = np.max(CSF_stim.log_CON_Ss)
+    plt_i = 0
+    for i in idx:
+
+        # ax[plt_i,0].loglog(CSF_stim.SFs,csf_curves[i,:].T)
+        ax[plt_i,0].plot(CSF_stim.SFs,csf_curves[i,:].T)        
+        # ax[plt_i,0].set_ylim([0,80])
+        ax[plt_i,0].set_xlabel('SF')
+        ax[plt_i,0].set_ylabel('Contrast')
+        ax[plt_i,1].imshow(
+            rfs[i,:,:],
+            extent=[xmin,xmax,ymin,ymax], alpha=0.1, vmin=0, vmax=1)
+        param_text = ''
+        p_label = print_p()['CSF']
+        for p in p_label.keys():
+            param_text += f'{p}={params[i,p_label[p]]:.2f}; '
+        # Find nearest SF
+        
+        stim_on = CSF_stim.SF_seq != 0
+        ax[plt_i,2].plot(pred_tc[i,:])
+        ax[plt_i,2].plot(real_tc[i,:])
+        ax[plt_i,2].plot(stim_on)        
+        ax[plt_i,2].set_title(param_text)
+
+        plt_i += 1
+    update_fig_fontsize(fig, 10)
+
+
+
+
+
 
 # Object to get Prf Info and parameters...
-class PrfShiftGetter(object):
+class Csf2EGetter(object):
     '''
     Used to hold parameters from LE & RE
     & To return user specified masks 
 
     __init__ will set up the useful information into 3 pandas data frames
     >> including: all the parameters in the numpy arrays input model specific
-        gauss: "x", "y", "a_sigma", "a_val", "bold_baseline", "rsq"
-        norm : "x", "y", "a_sigma", "a_val", "bold_baseline", "c_val", "n_sigma", "b_val", "d_val", "rsq"
+        gauss: "width_r", "sf0", "", "a_val", "bold_baseline", "rsq"
     >> & eccentricit, polar angle, 
         "ecc", "pol",
     Split between: 'LE'; 'RE'; 'Ed'
@@ -30,124 +104,197 @@ class PrfShiftGetter(object):
     return_vx_mask: returns a mask for voxels, specified by the user
     return_th_param: returns the specified parameters, masked
     '''
-    def __init__(self,params_LE, params_RE, **kwargs):
+    def __init__(self,sub, **kwargs):
         '''
         params_LE/X        np array, of all the parameters in the LE/X condition
         model               str, model: e.g., gauss or norm
         '''
-        self.sub = kwargs.get('sub', None)
+        self.sub = sub
+        self.nverts = amb_load_nverts(sub)
+        self.total_nverts = np.sum(self.nverts)
+        self.roi_fit = kwargs.get('roi_fit', 'all')
+        self.fit_stage = kwargs.get('fit_stage', 'iter')
+        self.model_list = ['gauss', 'norm', 'CSF']
         # Model information (could be norm, or gauss)
-        self.model = kwargs.get('model', 'gauss')       # name of model
-        self.p_labels = print_p()[self.model]  # parameters of model (used for dictionary later )  e.g. x,y,a_sigma,a_val,....
+        self.p_labels = {}
+        self.p_labels['gauss'] = print_p()['gauss']  # parameters of model (used for dictionary later )  
+        self.p_labels['norm'] = print_p()['norm']
+        self.p_labels['CSF'] = print_p()['CSF']
+        # Possible parameters        
+        self.possible_params = {}
+        self.possible_params['gauss'] = ['a_val', 'bold_baseline', 'rsq', 'x', 'y', 'ecc', 'pol', 'a_sigma']
+        self.possible_params['norm']  = ['a_val', 'bold_baseline', 'rsq', 'x', 'y', 'ecc', 'pol', 'a_sigma', "c_val", "n_sigma", "b_val", "d_val"]
+        self.possible_params['CSF'] = ['a_val', 'bold_baseline', 'rsq', "width_r", "sf0", "log10_sf0", "maxC", "log10_maxC", "width_l"]
+
+        # LOAD STIMULI
+        self.prfpy_stim = {}
+        self.prfpy_stim['CSF'] = amb_load_prfpy_stim('CSF')
+        self.prfpy_stim['pRF'] = amb_load_prfpy_stim('pRF')        
+
+        csf_params = kwargs.get('csf_params', None)
+        if csf_params==None:
+            csf_params = amb_load_prf_params(
+                sub=self.sub, task_list=['CSFLE', 'CSFRE'],
+                model_list='CSF',
+                roi_fit = self.roi_fit, fit_stage=self.fit_stage
+            )
+
+        prf_params = kwargs.get('prf_params', None)
+        if prf_params==None:
+            prf_params = amb_load_prf_params(
+                sub=self.sub, task_list=['pRFLE', 'pRFRE'],
+                model_list=['gauss', 'norm'],
+                roi_fit = self.roi_fit, fit_stage=self.fit_stage
+            )
+        
         # -> store the model parameters 
         self.params = {}
-        self.params['LE'] = params_LE
-        self.params['RE'] = params_RE
-        
-        # -> store stimulus information 
-        self.n_vox = params_LE.shape[0]
+        self.params['CSF'] = {}
+        self.params['gauss'] = {}
+        self.params['norm'] = {}
+
+        for eye in ['LE', 'RE']:
+            self.params['CSF'][eye] = csf_params[f'CSF{eye}']['CSF']
+            self.params['gauss'][eye] = prf_params[f'pRF{eye}']['gauss']
+            self.params['norm'][eye] = prf_params[f'pRF{eye}']['norm']
+
+
         # Create dictionaries to turn into PD dataframes...
-        all_data_dict = {'LE' : {},'RE' : {}, 'Ed' : {}} # L,R, difference
-        for i_task in ['LE', 'RE']:
-            # First add all the parameters from the numpy arrays (x,y, etc.)
-            for i_label in self.p_labels.keys():
-                all_data_dict[i_task][i_label] = self.params[i_task][:,self.p_labels[i_label]]
-
-            # Now add other useful things: 
-            # -> eccentricity and polar angle 
-            all_data_dict[i_task]['ecc'], all_data_dict[i_task]['pol'] = coord_convert(
-                all_data_dict[i_task]["x"], all_data_dict[i_task]["y"], 'cart2pol')
-        # Get change in parameters:
-        for i_label in all_data_dict["LE"].keys():
-            all_data_dict['Ed'][i_label] = all_data_dict['RE'][i_label] - all_data_dict['LE'][i_label]
-
-        # Convert to PD
         self.pd_params = {}
-        for i_E in all_data_dict.keys():
-            self.pd_params[i_E] = pd.DataFrame(all_data_dict[i_E])
+        for model in self.model_list:                        
+            LE_RE_Ed_dict = {'LE' : {},'RE' : {}, 'Ed' : {}} # L,R, difference
+            for eye in ['LE', 'RE']:
+                # First add all the parameters from the numpy arrays (x,y, etc.)
+                for i_label in self.p_labels[model].keys():
+                    LE_RE_Ed_dict[eye][i_label] = self.params[model][eye][:,self.p_labels[model][i_label]]
 
-    def return_vx_mask(self, ALL_th={}, LE_th={}, RE_th={}, Ed_th={}):
+                # Now add other useful things 
+                if model!='CSF': # (pol and ecc): 
+                    LE_RE_Ed_dict[eye]['ecc'], LE_RE_Ed_dict[eye]['pol'] = coord_convert(
+                        LE_RE_Ed_dict[eye]["x"], LE_RE_Ed_dict[eye]["y"], 'cart2pol')                    
+                else:
+                    # -> log10_sf0, log10_maxC,
+                    LE_RE_Ed_dict[eye]['log10_sf0'] = np.log10(LE_RE_Ed_dict[eye]['sf0'])
+                    LE_RE_Ed_dict[eye]['log10_maxC'] = np.log10(LE_RE_Ed_dict[eye]['maxC'])
+            
+            # Get change in parameters:
+            for i_label in LE_RE_Ed_dict["LE"].keys():
+                LE_RE_Ed_dict['Ed'][i_label] = LE_RE_Ed_dict['RE'][i_label] - LE_RE_Ed_dict['LE'][i_label]
+
+            self.pd_params[model] = {}
+            # Convert to PD & save into object
+            for i_E in LE_RE_Ed_dict.keys():
+                self.pd_params[model][i_E] = pd.DataFrame(LE_RE_Ed_dict[i_E])
+
+    def return_vx_mask(self, th_dict={}):
         '''
         return_vx_mask: returns a mask for voxels, specified by the user
-        4 optional dictionaries:
-        ALL_th      :       Applies to both L & R condition
-        LE_th       :       Applies to LE
-        RE_th       :       Applies to RE
-        Ed_th       :       Applies to the difference b/w L & R
 
-        Each dictionary can contain any key/s which applies to the pd_params
-            gauss: "x", "y", "a_sigma", "a_val", "bold_baseline", "rsq"
-            norm : "x", "y", "a_sigma", "a_val", "bold_baseline", "c_val", "n_sigma", "b_val", "d_val", "rsq"            
-            ALL: "ecc", "pol"
-        The value/s associated with a key will be used as the threshold (default is a minimum).         
-        >> .return_vx_mask(LE_th={'rsq' : 0.1})
-            returns a boolean array, excluding all vx where rsq < 0.1 in LE condition
+        Dictionary key specifies which parameter a threshold is applied to
+        The value associated with that key is determines the threshold
         
-        You can also specify how the threshold is applied by attaching min- or max- to the front of the key
-        >> .return_vx_mask(RE_th={max-a_sigma : 5}) # max size in RE condition is 5
+        Key setup        
+        th_dict = {"model-eye-thresh-param": value}
+        
+        E.g.1: Return mask for voxels with rsq > 0.1 for the gauss fits on the left eye
+            self.return_vx_mask(th_dict={'gauss-LE-min-rsq' : 0.1})
 
-        Finally, can provide a lower and upper bound by using a list
-        >> .return_vx_mask(RE_th={a_sigma : [3,5]})
+        E.g.2: Return mask for voxels with rsq > 0.1 for gauss fits on LE
+            And where the maximum eccentricity in the gauss fits on RE is less than 5
+            self.return_vx_mask(th_dict={
+                'gauss-LE-min-rsq' : 0.1,
+                'gauss-RE-max-ecc' : 5,
+                })
+        Options for model:
+            'CSF', 'gauss', 'norm', 'ALL' (all applies the threshold to all *possible* models)
+        Option for eye:
+            'LE', 'RE', 'Ed' (difference in eye), 'ALL' (all applies to both R & L)
+        Option for thresh:
+            'min', 'max', 'bound' (bound requires to values, min and max)
 
+        Options for param:
+            ALL models: "a_val", "bold_baseline", "rsq" 
+                        (a_val is the term I use for beta, because it alines with a_val in norm model)
+            PRF (gauss & norm): "x", "y", "ecc", "pol", "a_sigma"
+            norm : "c_val", "n_sigma", "b_val", "d_val"            
+            CSF: "width_r", "sf0", "log10_sf0", "maxC", "log10_maxC", "width_l"
+        ***** ROI *****
+        You can also include an roi:
+            Either by inputting a np.ndarray of your own (defined outside)
+            Or by specifying the ROI by a string ('V1_exvivo')
+        ***************
+                
         '''        
 
-        # Start with EVRYTHING        
-        vx_mask = np.ones(self.n_vox, dtype=bool)
-        # print(vx_mask.shape)
-        # ADD ALL_th to both LE and RE
-        for i_key in ALL_th.keys():
-            LE_th[i_key] = ALL_th[i_key]
-            RE_th[i_key] = ALL_th[i_key]
+        # Start with EVRYTHING included         
+        vx_mask = np.ones(self.total_nverts, dtype=bool)
+        for i_key in th_dict.keys():
+            i_key_str = str(i_key)
+            if 'roi' in i_key_str:
+                if isinstance(th_dict[i_key], np.ndarray): # Specified outside
+                    vx_mask &= th_dict[i_key] # assume it is a boolean array (can be used to add roi)
+                elif isinstance(th_dict[i_key], str): # Load specified roi                    
+                    roi_mask = amb_load_roi(self.sub, th_dict[i_key])
+                    vx_mask &= roi_mask
+            else:
+                # Split the key into components
+                model,eye,thresh,param = i_key_str.split('-')
+                # ** APPLY TO ALL MODELS **
+                if model=='ALL':
+                    # Do all models have this parameter?
+                    for imodel in self.model_list:
+                        if param not in self.possible_params[imodel]:
+                            print(f'Not applying {param} thresh to {imodel}')
+                        else:
+                            vx_mask &= self.return_vx_mask(
+                                {f'{imodel}-{eye}-{thresh}-{param}': th_dict[i_key]})
+                    continue
+                # ** APPLY TO LE & RE **
+                if eye=='ALL':
+                    for ieye in ['LE', 'RE']:
+                        vx_mask &= self.return_vx_mask(
+                            {f'{model}-{ieye}-{thresh}-{param}': th_dict[i_key]})
+                    continue
 
-        th_dict = {
-            'LE' : LE_th,
-            'RE' : RE_th,
-            'Ed' : Ed_th,
-        }
-        for task_key in th_dict.keys():
-            
-            for i_th in th_dict[task_key].keys():
-                if isinstance(th_dict[task_key][i_th], np.ndarray):
-                    print(vx_mask.shape)
-                    print(th_dict[task_key][i_th].shape)
-
-                    vx_mask &= th_dict[task_key][i_th] # assume it is a boolean array (can be used to add roi)
-                elif isinstance(th_dict[task_key][i_th], list): # upper and lower bound
-                    vx_mask &= self.pd_params[task_key][i_th].gt(th_dict[task_key][i_th][0]) # Greater than
-                    vx_mask &= self.pd_params[task_key][i_th].lt(th_dict[task_key][i_th][1]) # Less than
-                elif 'max' in i_th:
-                    i_th_lbl = i_th.split('-')[1]
-                    vx_mask &= self.pd_params[task_key][i_th_lbl].lt(th_dict[task_key][i_th]) # Less than
-                elif 'min' in i_th:
-                    i_th_lbl = i_th.split('-')[1]
-                    vx_mask &= self.pd_params[task_key][i_th_lbl].gt(th_dict[task_key][i_th]) # Greater than
+                if thresh=='min':
+                    vx_mask &= self.pd_params[model][eye][param].gt(th_dict[i_key]) # Greater than
+                elif thresh=='max':
+                    vx_mask &= self.pd_params[model][eye][param].lt(th_dict[i_key]) # less than
+                elif thresh=='bound':
+                    vx_mask &= self.pd_params[model][eye][param].gt(th_dict[i_key][0]) # Greater than
+                    vx_mask &= self.pd_params[model][eye][param].lt(th_dict[i_key][1]) # less than
                 else:
-                    # Default to min
                     sys.exit()
-                    # vx_mask &= self.pd_params[task_key][i_th].gt(th_dict[task_key][i_th]) # Less than
+
         return vx_mask
     
-    def return_th_param(self, task, param, vx_mask=None):
-        '''
-        For a specified task (LE, RE, Ed)
-        return all the parameters listed, masked by vx_mask        
+    def return_th_param(self, model, eye, param, vx_mask=None):
+        '''        
+        Return the parameters for *model*, *eye*, and *param*
+            model: gauss, norm, csf
+            eye: LE,RE,Ed
+            param: ... (see vx_mask entry)
+        Masked by vx_mask
         '''
         if vx_mask is None:
-            vx_mask = np.ones(self.n_vox, dtype=bool)
+            vx_mask = np.ones(self.total_nverts, dtype=bool)
         if not isinstance(param, list):
-            param = [param]        
-        param_out = []
+            param = [param]
+        params_out = []
         for i_param in param:
-            # this_task = i_param.split('-')[0]
-            # this_param = i_param.split('-')[1]
-            param_out.append(self.pd_params[task][i_param][vx_mask].to_numpy())
+            params_out.append(self.pd_params[model][eye][i_param][vx_mask])
+        if len(params_out)==1:
+            params_out = params_out[0]
+        
+        return params_out
 
-        return param_out
-
+# ************************************************************************************************
+# ************************************************************************************************
+# ************************************************************************************************
 # Plotting object which can generate different types of shift plots
-class AmbShiftPlot(PrfShiftGetter):
-    def __init__(self,params_LE, params_RE, **kwargs):
-        super().__init__(params_LE=params_LE, params_RE=params_RE, **kwargs)
+class AmbPlotter(Csf2EGetter):
+    def __init__(self,sub, **kwargs):
+        super().__init__(sub, **kwargs)
         #
         self.aperture_rad = kwargs.get("aperture_rad",5)
         self.ecc_bounds = kwargs.get("ecc_bounds",np.linspace(0, 5, 7))
@@ -155,11 +302,12 @@ class AmbShiftPlot(PrfShiftGetter):
         self.plot_cols = get_plot_cols()
         #
 
-    def arrows_drop(self, axs, vx_mask, **kwargs):
+    def arrows_drop(self, axs, th_dict=None,model='gauss', **kwargs):
         '''
         Like arrow_plot (see below)
         >> but also include 'drop out' vx with a PRF in one condition but not another
         '''
+        vx_mask = self.return_vx_mask(th_dict)
         # -> override some stuff
         drop_rsq = kwargs.get('drop_rsq', 0.1) # Voxels to be dropped based on this rsq 
         drop_ecc = kwargs.get('drop_ecc', 5)   # exclude all voxels outside this range
@@ -181,11 +329,25 @@ class AmbShiftPlot(PrfShiftGetter):
             vx_drop_out = kwargs['vx_drop_out']
 
         else:
-            old_vx_mask = np.copy(vx_mask)
-            vx_mask     = self.return_vx_mask(ALL_th={'min-rsq':drop_rsq, 'max-ecc':drop_ecc}) # For arrows - apply threshold to everything
+            old_vx_mask = np.copy(vx_mask) # Whatever we want to be applied to everything...
+
+            # For arrows - apply threshold to everything
+            vx_mask     = self.return_vx_mask(th_dict = {
+                f'{model}-ALL-max-ecc' : drop_ecc,
+                f'{model}-ALL-min-rsq' : drop_rsq,
+                })            
             # - For drop points - only pts inside the ecc range  
-            vx_drop_out     = self.return_vx_mask(ALL_th={'max-ecc':5}, LE_th={'min-rsq':drop_rsq}, RE_th={'max-rsq':drop_rsq})
-            vx_drop_in      = self.return_vx_mask(ALL_th={'max-ecc':5}, RE_th={'min-rsq':drop_rsq}, LE_th={'max-rsq':drop_rsq})
+            vx_drop_out     = self.return_vx_mask(th_dict = {
+                f'{model}-ALL-max-ecc': drop_ecc,
+                f'{model}-LE-min-rsq' : drop_rsq,
+                f'{model}-RE-max-rsq' : drop_rsq,
+                })
+            vx_drop_in      = self.return_vx_mask(th_dict = {
+                f'{model}-ALL-max-ecc': drop_ecc,
+                f'{model}-LE-max-rsq' : drop_rsq,
+                f'{model}-RE-min-rsq' : drop_rsq,
+                })
+            
             vx_mask     &= old_vx_mask
             vx_drop_out &= old_vx_mask
             vx_drop_in  &= old_vx_mask
@@ -193,22 +355,22 @@ class AmbShiftPlot(PrfShiftGetter):
         if vx_drop_out.sum() != 0:
             # Drop out points - where there is a good prf in LE, but not RE
             axs.scatter(
-                self.pd_params['LE']['x'][vx_drop_out], 
-                self.pd_params['LE']['y'][vx_drop_out], 
+                self.pd_params[model]['LE']['x'][vx_drop_out], 
+                self.pd_params[model]['LE']['y'][vx_drop_out], 
                 alpha=dot_alpha[vx_drop_out],
                 color='k', s=dot_size, marker='.')
         if vx_drop_in.sum() != 0:
             # Drop in points - where there is a good prf in *RE* but not LE
             axs.scatter(
-                self.pd_params['RE']['x'][vx_drop_in], 
-                self.pd_params['RE']['y'][vx_drop_in], 
+                self.pd_params[model]['RE']['x'][vx_drop_in], 
+                self.pd_params[model]['RE']['y'][vx_drop_in], 
                 alpha=dot_alpha[vx_drop_in],
                 color='g', s=dot_size, marker='.')
         
         # Now do the arrows
-        self.arrow_plot(axs=axs, vx_mask=vx_mask, **kwargs)
+        self.arrow_plot(axs=axs, vx_mask=vx_mask, model=model, **kwargs)
 
-    def arrow_plot(self, axs, vx_mask, **kwargs):
+    def arrow_plot(self, axs, vx_mask=None, model='gauss', **kwargs):
         ''' 
         PLOT FUNCTION: 
         Takes voxel position in LE and end coords (new_x, new_y) produces a plot, with arrows from old to new points 
@@ -230,6 +392,11 @@ class AmbShiftPlot(PrfShiftGetter):
         dot_alpha       ... see function        Alpha for the points
         dot_size        ... see function        Size for the points
         '''
+        
+        th_dict = kwargs.get('th_dict', False)
+        if th_dict:
+            vx_mask = self.return_vx_mask(th_dict)
+
         # Get arguments related to plotting:
         do_binning = kwargs.get("do_binning", False)
         do_scatter = kwargs.get("do_scatter", False)
@@ -252,31 +419,36 @@ class AmbShiftPlot(PrfShiftGetter):
 
         }    
         # *** Get values for dot alpha & dot_size ***   (*****dodgy*****)(*****dodgy*****)              
-        dot_alpha = self._return_dot_alpha(**kwargs)
-        if isinstance(dot_alpha, np.ndarray):
-            dot_alpha = dot_alpha[vx_mask]
-        # -> Dot size (*****dodgy*****)
-        dot_size = self._return_dot_size(**kwargs)
-        if isinstance(dot_size, np.ndarray):
-            dot_size = dot_size[vx_mask]        
+        # if do_scatter:
+        #     dot_alpha = self._return_dot_alpha(**kwargs)
+        #     if isinstance(dot_alpha, np.ndarray):
+        #         dot_alpha = dot_alpha[vx_mask]
+        #     # -> Dot size (*****dodgy*****)
+        #     dot_size = self._return_dot_size(**kwargs)
+        #     if isinstance(dot_size, np.ndarray):
+        #         dot_size = dot_size[vx_mask]        
+        #     LE_dot_size = dot_size
+        #     RE_dot_size = dot_size
+        #     # -> Dot col (*****dodgy*****)
+        #     dot_col,dot_cmap = self._return_dot_col(**kwargs)
+        #     if isinstance(dot_col, np.ndarray):
+        #         dot_col = dot_col[vx_mask]
+        #     dot_vmin = kwargs.get("dot_vmin", None)
+        #     dot_vmax = kwargs.get("dot_vmax", None)
+        # ************* GETS COMPLEX w/ 2 eyes - sticking to the simple stuff for now... 
+        dot_alpha = 0.5
+        dot_size = 500
         LE_dot_size = dot_size
         RE_dot_size = dot_size
-        # -> Dot col (*****dodgy*****)
-        dot_col,dot_cmap = self._return_dot_col(**kwargs)
-        if isinstance(dot_col, np.ndarray):
-            dot_col = dot_col[vx_mask]
-        dot_vmin = kwargs.get("dot_vmin", None)
-        dot_vmax = kwargs.get("dot_vmax", None)
+        dot_col = 'b'
         # *** *** *** *** *** *** *** *** *** *** *** 
         ALL_LE_ecc, ALL_LE_pol, ALL_LE_x, ALL_LE_y = self.return_th_param(
-            task='LE', param=['ecc', 'pol', 'x', 'y'], vx_mask=vx_mask)
-        ALL_RE_x, ALL_RE_y, ALL_RE_rsq = self.return_th_param(
-            task='RE', param=['x', 'y', 'rsq'], vx_mask=vx_mask)        
-
+            model=model,eye='LE', param=['ecc', 'pol', 'x', 'y'], vx_mask=vx_mask)
+        
+        ALL_RE_x, ALL_RE_y = self.return_th_param(
+            model=model,eye='RE', param=['x', 'y'], vx_mask=vx_mask)
+        
         if do_binning:
-            # if (ALL_RE_rsq<0.1).any():
-            #     print('Doing binning: some RE rsq values < 0.1')
-
             # print("DOING BINNING") 
             LE_x2plot, LE_y2plot = self._return_ecc_pol_bin(
                 params2bin=[ALL_LE_x, ALL_LE_y],
@@ -331,21 +503,21 @@ class AmbShiftPlot(PrfShiftGetter):
             axs.quiver(LE_x2plot, LE_y2plot, dx, dy, scale_units='xy', 
                        angles='xy', alpha=dot_alpha,color=q_col,  **arrow_kwargs)
             
-            # For the colorbar
-            if isinstance(dot_col, np.ndarray):
-                scat_col = axs.scatter(
-                    np.zeros_like(LE_x2plot), np.zeros_like(LE_x2plot), s=np.zeros_like(LE_x2plot), 
-                    c=dot_col, vmin=dot_vmin, vmax=dot_vmax, cmap=dot_cmap)
-                fig = plt.gcf()
-                cb = fig.colorbar(scat_col, ax=axs)        
-                cb.set_label(kwargs['dot_col'])
+            # # For the colorbar
+            # if isinstance(dot_col, np.ndarray):
+            #     scat_col = axs.scatter(
+            #         np.zeros_like(LE_x2plot), np.zeros_like(LE_x2plot), s=np.zeros_like(LE_x2plot), 
+            #         c=dot_col, vmin=dot_vmin, vmax=dot_vmax, cmap=dot_cmap)
+            #     fig = plt.gcf()
+            #     cb = fig.colorbar(scat_col, ax=axs)        
+            #     cb.set_label(kwargs['dot_col'])
 
         self._add_bin_lines(axs, ecc_bounds=ecc_bounds, pol_bounds=pol_bounds)        
         self._add_patches(axs, patch_col=patch_col)
         self._add_axs_basics(axs, **kwargs)    
         # END FUNCTION 
 
-    def scatter_param(self, axs, vx_mask, xy_task, **kwargs):
+    def scatter_param(self, axs, eye, model='gauss', vx_mask=None, **kwargs):
         '''
         PLOT FUNCTION: 
         Plot a parameter around the visual field
@@ -365,6 +537,10 @@ class AmbShiftPlot(PrfShiftGetter):
         dot_alpha       ... see function        Alpha for the points
         dot_size        ... see function        Size for the points                
         '''
+        th_dict = kwargs.get('th_dict', False)
+        if th_dict:
+            vx_mask = self.return_vx_mask(th_dict)
+
         do_binning = kwargs.get("do_binning", False)
         patch_col = kwargs.get("patch_col", self.plot_cols["RE"])
         ecc_bounds = kwargs.get("ecc_bounds", self.ecc_bounds)
@@ -384,7 +560,8 @@ class AmbShiftPlot(PrfShiftGetter):
         dot_vmax = kwargs.get("dot_vmax", None)
         # *** *** *** *** *** *** *** *** *** *** ***         
         # X,Y positions from specified task (ub=unbinned)
-        ub_X, ub_Y, ub_ecc, ub_pol  = self.return_th_param(task=xy_task, param=['x', 'y', 'ecc', 'pol'], vx_mask=vx_mask)
+        ub_X, ub_Y, ub_ecc, ub_pol  = self.return_th_param(
+            model=model, eye=eye, param=['x', 'y', 'ecc', 'pol'], vx_mask=vx_mask)
         if not do_binning: # Assign plotting values
             X2plot,Y2plot = ub_X, ub_Y
             C2plot = dot_col
@@ -420,7 +597,6 @@ class AmbShiftPlot(PrfShiftGetter):
         if do_patch:        
             self._add_patches(axs, patch_col=patch_col)
         self._add_axs_basics(axs, **kwargs)    
-
 
     def scatter_generic(self, axs, vx_mask, x_param, y_param, **kwargs):
         '''
@@ -508,8 +684,6 @@ class AmbShiftPlot(PrfShiftGetter):
         axs.hist(param2plot, bins=n_bins, color=self.plot_cols[p_eye],alpha=alpha,label=param)
         axs.legend()
         self._add_axs_basics(axs, **kwargs)    
-
-
 
     def ecc_2eye(self, axs, vx_mask, param, **kwargs):
         '''
@@ -773,23 +947,57 @@ class AmbShiftPlot(PrfShiftGetter):
         if y_lim!=[]:
             axs.set_ylim(y_lim)
 
-    def _return_dot_col(self, **kwargs):
-        '''
-        Function to give dot colors values for plotting:
-        '''
+    # ************************************
+    # RETURN DOT FUNCTIONS
+    '''
+    Set of functions to return stuff for dot plotting
+    > col, alpha, size
+    Looks at kwargs, and at ow_* arguments (overwrite)
+    Kwargs are set at when the function is called by the user
+    > but some plotting functions may want to overwrite this
+    > perhaps because they need to specify different dot properties for different eyes...
+
+    dot_col
+    dot_cmap
+    dot_size
+    dot_alpha
+
+    
+    '''
+    # ************************************
+    def _return_dot_property(self, dot_lbl, **kwargs):                
+        ow_dot_model = kwargs.get('ow_dot_model', False)
+        ow_dot_eye = kwargs.get('ow_dot_eye', False)
+        ow_dot_param = kwargs.get('ow_dot_param', False)
+
+        dmodel,deye,dparam = dot_lbl.split('-')
+        if ow_dot_model: dmodel=ow_dot_model
+        if ow_dot_eye: deye=ow_dot_eye
+        if ow_dot_param: dparam=ow_dot_param
+
+        dot_prop = self.return_th_param(model=dmodel,eye=deye,param=dparam).to_numpy()
+                
+
+        return dot_prop, dot_lbl
+        
+    def _return_dot_col(self, **kwargs):        
         # Is there a string?
+        # -> check for function specific overwrite...
+        dot_col = kwargs.get('dot_col', 'k')
         ow_dot_col = kwargs.get('ow_dot_col', False)
-        if not ow_dot_col:
-            dot_col = kwargs.get("dot_col", 'k')
-            dot_cmap = kwargs.get("dot_cmap", "viridis")
-            if (not isinstance(dot_col, str)) or (len(dot_col)==1):
-                dot_cmap=None
-                return dot_col, dot_cmap
-            
-            dot_prop, dot_lbl = self._return_dot_property(dot_lbl=dot_col, **kwargs)
-        else:
-            dot_prop = ow_dot_col
+        if ow_dot_col: dot_col = ow_dot_col
+        dot_cmap = kwargs.get('dot_cmap', 'viridis')
+        ow_dot_cmap = kwargs.get('ow_dot_cmap', False)
+        if ow_dot_cmap: dot_cmap = ow_dot_cmap
+        # Check - is dot col a string used to return parameter values?
+        # e.g., 'gauss-LE-rsq'
+        if not '-' in dot_col:
+            # Do not need a cmap
             dot_cmap = None
+            return dot_col, dot_cmap
+        #
+            
+        dot_prop, dot_lbl = self._return_dot_property(dot_lbl=dot_col, **kwargs)
         # dot_prop = rescale_bw(dot_prop, old_min=min_dot_col, old_max=max_dot_col)
         # cNorm = mpl.colors.Normalize(vmin=0, vmax=1)
         # scalarMap = mpl.cm.ScalarMappable(norm=cNorm, cmap=dot_cmap)
@@ -842,22 +1050,7 @@ class AmbShiftPlot(PrfShiftGetter):
             dot_size = ow_dot_size
         return dot_size
 
-    def _return_dot_property(self, dot_lbl, **kwargs):
-        ow_dot_task = kwargs.get('ow_dot_task', False)
-        if not ow_dot_task:
-            # Check for the task:
-            task=dot_lbl.split('-')[0]
-            dot_lbl = dot_lbl.split('-')[1]
-        else:
-            task = ow_dot_task # Option to overwrite the dot task (LE vs RE)
-        
-        # Find the parameters to scale size by:
-        if dot_lbl in self.pd_params[task].keys():
-            dot_prop = self.pd_params[task][dot_lbl].to_numpy()
-        elif dot_lbl in self.__dict__.keys():
-            dot_prop = self.__dict__[dot_lbl]  
-        
-        return dot_prop, dot_lbl
+
     
     def _return_ecc_pol_bin(self, params2bin, ecc4bin, pol4bin, ecc_bounds, pol_bounds, bin_weight=None):
         '''
@@ -902,23 +1095,3 @@ class AmbShiftPlot(PrfShiftGetter):
             params_binned.append(bin_mean)
 
         return params_binned
-
-    def _update_axs_fontsize(self, axs, new_font_size):
-        for item in ([axs.title, axs.xaxis.label, axs.yaxis.label] +
-                    axs.get_xticklabels() + axs.get_yticklabels()):
-            item.set_fontsize(new_font_size)        
-        for item in axs.get_children():          
-            if isinstance(item, mpl.legend.Legend):
-                texts = item.get_texts()
-                if not isinstance(texts, list):
-                    texts = [texts]
-                for i_txt in texts:
-                    i_txt.set_fontsize(new_font_size)
-
-    def _update_fig_fontsize(self, fig, new_font_size):
-        fig_kids = fig.get_children()
-        for i_kid in fig_kids:
-            if isinstance(i_kid, mpl.axes.Axes):
-                self._update_axs_fontsize(i_kid, new_font_size)
-            elif isinstance(i_kid, mpl.text.Text):
-                i_kid.set_fontsize(new_font_size)

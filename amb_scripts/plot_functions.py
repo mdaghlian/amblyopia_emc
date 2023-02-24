@@ -555,9 +555,9 @@ def time_series_plot(params, prfpy_stim, real_tc=[], pred_tc=[], model='gauss', 
     fmri_TR =kwargs.get("fmri_TR", 1.5)
 
     if model=='gauss':
-        model_idx = print_p()['gauss_inv']
+        model_idx = print_p()['gauss']
     elif model=='norm':
-        model_idx = print_p()['norm_inv']
+        model_idx = print_p()['norm']
 
     # ************* PRF (+stimulus) PLOT *************
     fig = plt.figure(constrained_layout=True, figsize=(15,5))

@@ -7,13 +7,15 @@ import pickle
 opj = os.path.join
 
 import nibabel as nb
-from prfpy.stimulus import PRFStimulus2D
+from prfpy.stimulus import PRFStimulus2D, CSFStimulus
+
 import linescanning.utils as lsutils
-# import pandas as pd
+import pandas as pd
+from .utils import print_p
 # from collections import defaultdict as dd
 # import cortex
 
-from .utils import hyphen_parse
+from .utils import hyphen_parse, coord_convert
 
 source_data_dir = '/data1/projects/dumoulinlab/Lab_members/Marcus/projects/amblyopia_emc/sourcedata'#os.getenv("DIR_DATA_SOURCE")
 derivatives_dir = '/data1/projects/dumoulinlab/Lab_members/Marcus/projects/amblyopia_emc/derivatives'#os.getenv("DIR_DATA_DERIV")
@@ -21,6 +23,107 @@ freesurfer_dir = opj(derivatives_dir, 'freesurfer')
 default_prf_dir = opj(derivatives_dir, 'prf')
 dm_dir = opj(os.path.dirname(os.path.realpath(__file__)), 'dm_files' )
 psc_tc_dir = opj(derivatives_dir, 'psc_tc')
+
+class PrfParamGetterv2(object):
+    '''
+    Used to hold parameters for 1 subject, 1 task & 1 model
+    & To return user specified masks 
+
+    __init__ will set up the useful information into 3 pandas data frames
+    >> including: all the parameters in the numpy arrays input model specific
+        gauss: "x", "y", "a_sigma", "a_val", "bold_baseline", "rsq"
+        norm : "x", "y", "a_sigma", "a_val", "bold_baseline", "c_val", "n_sigma", "b_val", "d_val", "rsq"
+    >> & eccentricit, polar angle, 
+        "ecc", "pol",
+    
+    Functions:
+    return_vx_mask: returns a mask for voxels, specified by the user
+    return_th_param: returns the specified parameters, masked
+    '''
+    def __init__(self,sub, task_list, model_list, **kwargs):
+        '''
+        params_LE/X        np array, of all the parameters in the LE/X condition
+        model               str, model: e.g., gauss or norm
+        '''
+        self.sub = kwargs.get('sub', None)
+        self.n_vox = amb_load_nverts(sub)
+        self.params_np = amb_load_prf_params(
+            sub=sub, task_list=task_list, model_list=model_list, **kwargs)
+        
+        self.params_dd = {}
+        for task in task_list:
+            self.params_dd[task] = {}
+            for model in model_list:
+                self.params_dd[task][model] = {}
+                mod_labels = print_p()[model] 
+                for key in mod_labels.keys():                    
+                    self.params_dd[task][model][key] = self.params_np[task][model][:,mod_labels[key]]
+                # Ecc, pol
+                self.params_dd[task][model]['ecc'], self.params_dd[task][model]['pol'] = coord_convert(
+                    self.params_dd[task][model]['x'],self.params_dd[task][model]['y'],
+                    'cart2pol')
+                
+        # Convert to PD
+        self.pd_params = {}
+        for task in task_list:
+            self.pd_params[task] = {}
+            for model in model_list:                
+                self.pd_params[task][model] = pd.DataFrame(self.params_dd[task][model])
+
+    def return_vx_mask(self, th={}):
+        '''
+        return_vx_mask: returns a mask (boolean array) for voxels, specified by the user
+        th keys must be split into 4 parts
+        'task-model-comparison-param' : value
+        e.g.: to exclude gauss fits with rsq less than 0.1
+        th = {'pRFLE-gauss-min-rsq': 0.1 } 
+
+        task        -> pRFLE, pRFRE
+        model       -> gauss, norm
+        comparison  -> min, max
+        param       -> any of... (model dependent)
+            "x", "y", "ecc", "pol"
+            gauss: "a_sigma", "a_val", "bold_baseline", "rsq"
+            norm : "a_sigma", "a_val", "bold_baseline", "c_val", "n_sigma", "b_val", "d_val", "rsq"            
+            returns a boolean array, excluding all vx where rsq < 0.1 in LE condition
+        
+        '''        
+
+        # Start with EVRYTHING        
+        vx_mask = np.ones(self.n_vox, dtype=bool)
+        # ADD ALL_th to both LE and RE
+        for th_key in th.keys():
+            print(th_key)
+            # th_key_str = list(th_key)[0] # convert to string...
+            # print(th_key_str.split('-'))
+            # sys.exit()
+            # task,model,comp,p = th_key_str.split('-')
+            # th_val = th[th_key]
+            # if comp=='min':
+            #     vx_mask &= self.pd_params[task][model][p].gt(th_val)
+            # elif comp=='max':
+            #     vx_mask &= self.pd_params[task][model][p].lt(th_val)
+            # else:
+            #     sys.exit()
+
+        return vx_mask
+    
+    # def return_th_param(self, task, param, vx_mask=None):
+    #     '''
+    #     For a specified task (LE, RE, Ed)
+    #     return all the parameters listed, masked by vx_mask        
+    #     '''
+    #     if vx_mask is None:
+    #         vx_mask = np.ones(self.n_vox, dtype=bool)
+    #     if not isinstance(param, list):
+    #         param = [param]        
+    #     param_out = []
+    #     for i_param in param:
+    #         # this_task = i_param.split('-')[0]
+    #         # this_param = i_param.split('-')[1]
+    #         param_out.append(self.pd_params[task][i_param][vx_mask].to_numpy())
+
+    #     return param_out
 
 def amb_load_fit_settings(sub, task_list, model_list, **kwargs):
     fit_settings = amb_load_pkl_key(
@@ -56,8 +159,12 @@ def amb_load_pkl(sub, task, model, **kwargs):
     linescanning toolbox nicely saves everything into a pickle
     this will load the correct pickle associated with the correct, sub, ses, model and task
     roi_fit specifies which fitting run was used.  
-    '''
-    amb_prf_dir = opj(derivatives_dir, 'amb-prf')
+    '''    
+    if 'pRF' in task:
+        amb_prf_dir = opj(derivatives_dir, 'amb-prf')
+    else:
+        amb_prf_dir = opj(derivatives_dir, 'amb-csf')
+
     dir_to_search = opj(amb_prf_dir, sub, 'ses-1')
     include = kwargs.get("include", []) # any extra details to search for in file name
     exclude = kwargs.get("exclude", []) # any extra details to search for in file name
@@ -81,7 +188,7 @@ def amb_load_pkl(sub, task, model, **kwargs):
 
     return data    
 
-def amb_load_real_tc(sub, task_list):
+def amb_load_real_tc(sub, task_list, clip_start=0):
     if not isinstance(task_list, list):
         task_list = [task_list]
     this_dir = opj(psc_tc_dir, sub, 'ses-1')
@@ -91,9 +198,31 @@ def amb_load_real_tc(sub, task_list):
         if isinstance(real_tc_file, list):
             print(f'Error, more than 1 match ({len(real_tc_file)} files)')
             sys.exit()
-        real_tc[task] = np.load(real_tc_file).T
+        unclipped = np.load(real_tc_file).T        
+        real_tc[task] = np.copy(unclipped[:,clip_start::])
 
     return real_tc
+
+def amb_load_real_tc_run(sub, task_list, run_list):
+    if not isinstance(task_list, list):
+        task_list = [task_list]
+    if not isinstance(run_list, list):
+        run_list=[run_list]
+    unz_dir = opj(derivatives_dir, 'pybest', sub, 'ses-1', 'unzscored')
+    real_tc = {}
+    for task in task_list:
+        real_tc[task] = []
+        for run in run_list:
+            LH_real_tc_file = lsutils.get_file_from_substring(
+                [task, f'run-{run}', 'fsnative', 'hemi-R_desc-denoised_bold'], unz_dir)
+            LH_tc = np.load(LH_real_tc_file)
+            RH_real_tc_file = lsutils.get_file_from_substring(
+                [task, f'run-{run}', 'fsnative', 'hemi-R_desc-denoised_bold'], unz_dir)
+            RH_tc = np.load(RH_real_tc_file)
+            real_tc[task].append(np.concatenate([LH_tc, RH_tc], axis=1).T)
+
+    return real_tc
+
 
 def amb_load_dm(dm_types):
     
@@ -117,19 +246,39 @@ def amb_load_dm(dm_types):
             sys.exit()
     return dm
 
-def amb_load_prfpy_stim(dm_type='prf'):
-    screen_info_path = opj(dm_dir, 'screen_info.yml')
-    with open(screen_info_path) as f:
-        screen_info = yaml.safe_load(f)
+def amb_load_prfpy_stim(dm_type='pRF', clip_start=0):
+    if dm_type=='pRF':
+        screen_info_path = opj(dm_dir, 'screen_info.yml')
+        with open(screen_info_path) as f:
+            screen_info = yaml.safe_load(f)
 
-    dm_prf = amb_load_dm('prf')['prf']    
-    prfpy_stim = PRFStimulus2D(
-        screen_size_cm=screen_info['screen_size_cm'],
-        screen_distance_cm=screen_info['screen_distance_cm'],
-        design_matrix=dm_prf, 
-        axis=0,
-        TR=screen_info['TR']
-        )        
+        dm_prf = amb_load_dm('prf')['prf'][:,:,clip_start::]    
+        prfpy_stim = PRFStimulus2D(
+            screen_size_cm    =screen_info['screen_size_cm'],
+            screen_distance_cm=screen_info['screen_distance_cm'],
+            design_matrix=dm_prf, 
+            axis=0,
+            TR=screen_info['TR']
+            )
+    elif dm_type=='CSF':
+        csf_dm = amb_load_dm(['sf_vect', 'c_vect'])
+        sf_vect = csf_dm['sf_vect'][clip_start::]
+        c_vect = csf_dm['c_vect'][clip_start::]
+
+        # Number of stimulus types:
+        u_sfs = np.sort(list(set(sf_vect))) # unique SFs
+        u_sfs = u_sfs[u_sfs>0]
+        u_con = np.sort(list(set(c_vect)))
+        u_con = u_con[u_con>0]
+        prfpy_stim = CSFStimulus(
+            SFs = u_sfs,#,
+            CONs = u_con,
+            SF_seq=sf_vect,
+            CON_seq = c_vect,
+            TR=1.5,
+        )
+
+
     return prfpy_stim    
 
 def amb_load_nverts(sub):
@@ -153,8 +302,9 @@ def amb_load_roi(sub, roi):
     '''
     # If *ALL* voxels to be included
     if roi=='all':
-        num_vx = amb_load_nverts(sub)
-        roi_idx = np.ones(num_vx, dtype=bool)
+        total_num_vx = np.sum(amb_load_nverts(sub))
+
+        roi_idx = np.ones(total_num_vx, dtype=bool)
         return roi_idx    
     # Else look for rois in subs freesurfer label folder
     roi_dir = opj(derivatives_dir, 'freesurfer', sub, 'label')
@@ -164,6 +314,11 @@ def amb_load_roi(sub, roi):
     roi_idx = []
     for this_roi in roi:    
         # Find the corresponding files
+        if 'not' in this_roi:
+            do_not = True
+            this_roi = this_roi.split('-')[-1]
+        else:
+            do_not = False
         roi_file = {}
         roi_file['L'] = lsutils.get_file_from_substring([this_roi, '.thresh', '.label', 'lh'], roi_dir)    
         roi_file['R'] = lsutils.get_file_from_substring([this_roi, '.thresh', '.label', 'rh'], roi_dir)    
@@ -177,6 +332,8 @@ def amb_load_roi(sub, roi):
             idx_int = [int(idx_str[i]) for i in range(len(idx_str))]
             this_bool = np.zeros(n_verts[i], dtype=bool)
             this_bool[idx_int] = True
+            if do_not:
+                this_bool = ~this_bool
 
             LR_bool.append(this_bool)
         this_roi_mask = np.concatenate(LR_bool)

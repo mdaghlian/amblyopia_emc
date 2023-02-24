@@ -8,6 +8,8 @@ from linescanning import (
     prf,
     utils,
 )
+from datetime import datetime, timedelta
+import time
 import numpy as np
 import os
 import sys
@@ -117,23 +119,22 @@ Example:
     tc_data = amb_load_real_tc(sub=sub, task_list=task)[task].T
     # Are we limiting the fits to an roi?
 
-    print('Fitting {roi_fit} ')
+    print(f'Fitting {roi_fit} ')
     roi_mask = amb_load_roi(sub=sub, roi=roi_fit)
     if roi_fit=='all':
         print('fitting ALL voxels')
         if constraints=='tc':
             print('warning - tc for full brain is too long...')            
-        pass
+    else:
+        # initialize empty array and only keep the timecourses from label; keeps the original dimensions for simplicity sake! You can always retrieve the label indices with linescanning.optimal.SurfaceCalc
+        empty = np.zeros_like(tc_data)
 
-    # initialize empty array and only keep the timecourses from label; keeps the original dimensions for simplicity sake! You can always retrieve the label indices with linescanning.optimal.SurfaceCalc
-    empty = np.zeros_like(tc_data)
+        # insert timecourses 
+        lbl_true = np.where(roi_mask == True)[0]
+        empty[:,lbl_true] = tc_data[:,lbl_true]
 
-    # insert timecourses 
-    lbl_true = np.where(roi_mask == True)[0]
-    empty[:,lbl_true] = tc_data[:,lbl_true]
-
-    # overwrite m_prf_tc_data
-    tc_data = empty.copy()
+        # overwrite m_prf_tc_data
+        tc_data = empty.copy()
 
     # Design matrix
     design_matrix = amb_load_dm('prf')['prf']        
@@ -152,6 +153,8 @@ Example:
     with parallel_backend('threading', n_jobs=1):
         import mkl
         mkl.set_num_threads(8)
+        start_time = datetime.now().strftime('%Y/%m/%d %H:%M:%S')
+        print(f"Starting PRF fit at {start_time}")
         
         # stage 1 - no HRF
         stage1 = prf.pRFmodelFitting(
@@ -172,7 +175,8 @@ Example:
             use_grid_bounds=False,
             nr_jobs=1)
         stage1.fit()
-
+        end_time = datetime.now().strftime('%Y/%m/%d %H:%M:%S')
+        print(f"Completed PRF fit at {end_time}")
         # stage2 - fit HRF after initial iterative fit
         if fit_hrf:
 

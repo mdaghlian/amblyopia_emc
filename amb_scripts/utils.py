@@ -1,5 +1,8 @@
 import numpy as np
 
+def qprint(print_str):
+    print(print_str, flush=True)
+
 def get_roi_idx_from_dot_label(path2dotlabel):
     with open(path2dotlabel) as f:
         contents = f.readline()
@@ -24,17 +27,9 @@ def hyphen_parse(str_prefix, str_in):
         str_out = f'{str_prefix}-{str_in}'
     return str_out
     
-def print_p(model=[], params=[]):
+def print_p():
     p_order = {}
     p_order['gauss'] = {
-       0 : 'x',
-       1 : 'y',
-       2 : 'sigma/prf_size',
-       3 : 'beta/amp',
-       4 : 'bold baseline',
-       5 : '[rsq]',
-    }
-    p_order['gauss_inv'] = {
         'x' : 0,
         'y' : 1,
         'a_sigma' : 2,
@@ -43,7 +38,7 @@ def print_p(model=[], params=[]):
         'rsq' : 5,
     }    
 
-    p_order['norm_inv'] = {
+    p_order['norm'] = {
         'x' : 0,
         'y' : 1,
         'a_sigma' : 2,
@@ -56,7 +51,7 @@ def print_p(model=[], params=[]):
         'rsq' : 9,
     }    
 
-    p_order['css_inv'] = {
+    p_order['CSS'] = {
         'x' : 0,
         'y' : 1,
         'a_sigma' : 2,
@@ -66,7 +61,7 @@ def print_p(model=[], params=[]):
         'rsq' : 6,
     }        
 
-    p_order['dog_inv'] = {
+    p_order['DOG'] = {
         'x' : 0,
         'y' : 1,
         'a_sigma' : 2,
@@ -75,7 +70,17 @@ def print_p(model=[], params=[]):
         'c_val' : 5,
         'n_sigma' : 6,
         'rsq' : 7,
-    }        
+    }
+
+    p_order['CSF']  ={
+        'width_r' : 0,
+        'sf0' : 1,
+        'maxC' : 2,
+        'width_l' : 3,
+        'a_val' : 4,
+        'baseline' : 5,
+        'rsq' : 6,
+    }
 
     return p_order
 

@@ -59,4 +59,9 @@ np.save('prf_design_matrix', prf_design_matrix)
 
 '''
 Now to make the CSF design matrix
+CSF relevant info:
+> contrasts_vect.mat    sequence of contrast values
+> sf_vect.mat           sequence of spatial frequency values
+> csf_images1080.mat    1080 x 1080 x 433 images presented to subject
+> csf_images_seq.mat    Sequence in which these images are presented (note in *MATLAB* indexing)
 '''
