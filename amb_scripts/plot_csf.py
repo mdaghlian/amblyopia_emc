@@ -14,14 +14,32 @@ from .plot_functions import *
 from .pyctx import *
 from prfpy.rf import csf_exponential
 
-
+def grate_texture(sf=1, con=1, n_pix=200):
+    n_deg = 5
+    x_grid,y_grid = np.meshgrid(np.linspace(-n_deg,n_deg,n_pix),np.linspace(-n_deg,n_deg,n_pix))
+    ecc = np.sqrt(x_grid**2 + y_grid**2)
+    grate = np.cos(x_grid*sf) * con
+    grate[ecc>n_deg] = 0
+    # plt.imshow(grate, vmin=-1, vmax=1)
+    return grate
 
 def get_csf_curves(log_SFs, width_r, sf0, maxC, width_l):    
+    do_1_rf = False
+    if isinstance(width_r, float):
+        width_r  = np.array(width_r)
+        sf0  = np.array(sf0)
+        maxC  = np.array(maxC)
+        width_l = np.array(width_l)
+        do_1_rf = True
     log_sf0 = np.log10(sf0)
     log_maxC = np.log10(maxC)
     
     # Reshape for multiple RFs
-    log_SFs = np.tile(log_SFs, (width_l.shape[0],1))
+    if not do_1_rf:
+        log_SFs = np.tile(log_SFs, (width_l.shape[0],1))
+    else:
+        log_SFs = log_SFs[np.newaxis,...]
+
     #
     width_r     = width_r[...,np.newaxis]
     log_sf0     = log_sf0[...,np.newaxis]
@@ -46,7 +64,7 @@ def csf_tc_plotter(real_tc, pred_tc, params, idx):
     CSF_stim = amb_load_prfpy_stim('CSF')
     rfs = csf_exponential(
         CSF_stim.log_SF_grid, 
-        CSF_stim.log_CON_S_grid, 
+        CSF_stim.CON_S_grid, 
         *list(params[:,0:4].T))
     csf_curves = get_csf_curves(CSF_stim.log_SFs, *list(params[:,0:4].T))
     #
@@ -54,12 +72,14 @@ def csf_tc_plotter(real_tc, pred_tc, params, idx):
     fig.set_size_inches(15,idx.shape[0]*2.5)
     xmin  = np.min(CSF_stim.log_SFs)
     xmax  = np.max(CSF_stim.log_SFs)
-    ymin  = np.min(CSF_stim.log_CON_Ss)
-    ymax  = np.max(CSF_stim.log_CON_Ss)
+    ymin  = np.min(CSF_stim.CON_Ss)
+    ymax  = np.max(CSF_stim.CON_Ss)
     plt_i = 0
     for i in idx:
 
         # ax[plt_i,0].loglog(CSF_stim.SFs,csf_curves[i,:].T)
+        # ax[plt_i,0].set_xlim(1,2**10)
+        # ax[plt_i,0].set_ylim(1,2**10)
         ax[plt_i,0].plot(CSF_stim.SFs,csf_curves[i,:].T)        
         # ax[plt_i,0].set_ylim([0,80])
         ax[plt_i,0].set_xlabel('SF')
@@ -114,23 +134,21 @@ class Csf2EGetter(object):
         self.total_nverts = np.sum(self.nverts)
         self.roi_fit = kwargs.get('roi_fit', 'all')
         self.fit_stage = kwargs.get('fit_stage', 'iter')
-        self.model_list = ['gauss', 'norm', 'CSF']
-        # Model information (could be norm, or gauss)
-        self.p_labels = {}
-        self.p_labels['gauss'] = print_p()['gauss']  # parameters of model (used for dictionary later )  
-        self.p_labels['norm'] = print_p()['norm']
-        self.p_labels['CSF'] = print_p()['CSF']
+        self.model_list = kwargs.get('model_list', ['gauss', 'norm', 'CSF'])
+        # Model information (could be norm, or gauss, or CSF)
+        self.p_labels = print_p()
         # Possible parameters        
-        self.possible_params = {}
-        self.possible_params['gauss'] = ['a_val', 'bold_baseline', 'rsq', 'x', 'y', 'ecc', 'pol', 'a_sigma']
-        self.possible_params['norm']  = ['a_val', 'bold_baseline', 'rsq', 'x', 'y', 'ecc', 'pol', 'a_sigma', "c_val", "n_sigma", "b_val", "d_val"]
-        self.possible_params['CSF'] = ['a_val', 'bold_baseline', 'rsq', "width_r", "sf0", "log10_sf0", "maxC", "log10_maxC", "width_l"]
+        # self.possible_params = {}
+        # self.possible_params['gauss'] = ['a_val', 'bold_baseline', 'rsq', 'x', 'y', 'ecc', 'pol', 'a_sigma']
+        # self.possible_params['norm']  = ['a_val', 'bold_baseline', 'rsq', 'x', 'y', 'ecc', 'pol', 'a_sigma', "c_val", "n_sigma", "b_val", "d_val"]
+        # self.possible_params['CSF'] = ['a_val', 'bold_baseline', 'rsq', "width_r", "sf0", "log10_sf0", "maxC", "log10_maxC", "width_l"]
 
         # LOAD STIMULI
         self.prfpy_stim = {}
         self.prfpy_stim['CSF'] = amb_load_prfpy_stim('CSF')
         self.prfpy_stim['pRF'] = amb_load_prfpy_stim('pRF')        
-
+        
+        # Load params
         csf_params = kwargs.get('csf_params', None)
         if csf_params==None:
             csf_params = amb_load_prf_params(
@@ -161,8 +179,9 @@ class Csf2EGetter(object):
 
         # Create dictionaries to turn into PD dataframes...
         self.pd_params = {}
+        self.possible_params = {} # List of possible parameters for each model
         for model in self.model_list:                        
-            LE_RE_Ed_dict = {'LE' : {},'RE' : {}, 'Ed' : {}} # L,R, difference
+            LE_RE_Ed_dict = {'LE' : {},'RE' : {}, 'Ed' : {}, 'Em': {}} # L,R, difference, mean
             for eye in ['LE', 'RE']:
                 # First add all the parameters from the numpy arrays (x,y, etc.)
                 for i_label in self.p_labels[model].keys():
@@ -176,15 +195,33 @@ class Csf2EGetter(object):
                     # -> log10_sf0, log10_maxC,
                     LE_RE_Ed_dict[eye]['log10_sf0'] = np.log10(LE_RE_Ed_dict[eye]['sf0'])
                     LE_RE_Ed_dict[eye]['log10_maxC'] = np.log10(LE_RE_Ed_dict[eye]['maxC'])
-            
-            # Get change in parameters:
+                    LE_RE_Ed_dict[eye]['sfmax'] = 10**(
+                        np.sqrt(LE_RE_Ed_dict[eye]['log10_maxC']/(LE_RE_Ed_dict[eye]['width_r']**2)) + \
+                                LE_RE_Ed_dict[eye]['log10_sf0'])
+                    LE_RE_Ed_dict[eye]['sfmax'][LE_RE_Ed_dict[eye]['sfmax']>100] = 100 # MAX 
+                    LE_RE_Ed_dict[eye]['log10_sfmax'] = np.log10(LE_RE_Ed_dict[eye]['sfmax'])
+                if model=='norm':
+                    # -> size ratio:
+                    LE_RE_Ed_dict[eye]['size_ratio'] = LE_RE_Ed_dict[eye]['n_sigma'] / LE_RE_Ed_dict[eye]['a_sigma']
+                    LE_RE_Ed_dict[eye]['amp_ratio'] = LE_RE_Ed_dict[eye]['a_val'] / LE_RE_Ed_dict[eye]['c_val']
+                    LE_RE_Ed_dict[eye]['bd_ratio'] = LE_RE_Ed_dict[eye]['b_val'] / LE_RE_Ed_dict[eye]['d_val']
+            # Get differnce & mean of params:
             for i_label in LE_RE_Ed_dict["LE"].keys():
+                # Difference
                 LE_RE_Ed_dict['Ed'][i_label] = LE_RE_Ed_dict['RE'][i_label] - LE_RE_Ed_dict['LE'][i_label]
+                LE_RE_Ed_dict['Em'][i_label] = (LE_RE_Ed_dict['RE'][i_label] + LE_RE_Ed_dict['LE'][i_label])/2
 
             self.pd_params[model] = {}
             # Convert to PD & save into object
             for i_E in LE_RE_Ed_dict.keys():
                 self.pd_params[model][i_E] = pd.DataFrame(LE_RE_Ed_dict[i_E])
+
+        # Save list of possible parameters for each model:
+        self.possible_params = {}
+        for model in self.model_list:
+            self.possible_params[model] = list(self.pd_params[model]['LE'].keys())                        
+
+        
 
     def return_vx_mask(self, th_dict={}):
         '''
@@ -208,7 +245,7 @@ class Csf2EGetter(object):
         Options for model:
             'CSF', 'gauss', 'norm', 'ALL' (all applies the threshold to all *possible* models)
         Option for eye:
-            'LE', 'RE', 'Ed' (difference in eye), 'ALL' (all applies to both R & L)
+            'LE', 'RE', 'Ed' (difference in eye),'Em' (mean of both eyes), 'ALL' (all applies to both R & L)
         Option for thresh:
             'min', 'max', 'bound' (bound requires to values, min and max)
 
@@ -236,35 +273,43 @@ class Csf2EGetter(object):
                 elif isinstance(th_dict[i_key], str): # Load specified roi                    
                     roi_mask = amb_load_roi(self.sub, th_dict[i_key])
                     vx_mask &= roi_mask
-            else:
-                # Split the key into components
-                model,eye,thresh,param = i_key_str.split('-')
-                # ** APPLY TO ALL MODELS **
-                if model=='ALL':
-                    # Do all models have this parameter?
-                    for imodel in self.model_list:
-                        if param not in self.possible_params[imodel]:
-                            print(f'Not applying {param} thresh to {imodel}')
-                        else:
-                            vx_mask &= self.return_vx_mask(
-                                {f'{imodel}-{eye}-{thresh}-{param}': th_dict[i_key]})
-                    continue
-                # ** APPLY TO LE & RE **
-                if eye=='ALL':
-                    for ieye in ['LE', 'RE']:
-                        vx_mask &= self.return_vx_mask(
-                            {f'{model}-{ieye}-{thresh}-{param}': th_dict[i_key]})
-                    continue
+                continue # MOVE TO NEXT KEY...
 
-                if thresh=='min':
-                    vx_mask &= self.pd_params[model][eye][param].gt(th_dict[i_key]) # Greater than
-                elif thresh=='max':
-                    vx_mask &= self.pd_params[model][eye][param].lt(th_dict[i_key]) # less than
-                elif thresh=='bound':
-                    vx_mask &= self.pd_params[model][eye][param].gt(th_dict[i_key][0]) # Greater than
-                    vx_mask &= self.pd_params[model][eye][param].lt(th_dict[i_key][1]) # less than
-                else:
-                    sys.exit()
+            # Split the key into components
+            model,eye,thresh,param = i_key_str.split('-')
+            # ** APPLY TO ALL MODELS **
+            if model=='ALL':
+                # Do all models have this parameter?
+                for imodel in self.model_list:
+                    if param not in self.possible_params[imodel]:
+                        print(f'Not applying {param} thresh to {imodel}')
+                    else:
+                        vx_mask &= self.return_vx_mask(
+                            {f'{imodel}-{eye}-{thresh}-{param}': th_dict[i_key]})
+                continue
+            # ** APPLY TO LE & RE **
+
+            if (eye=='ALL') | (eye=='Ed'):
+                for ieye in ['LE', 'RE']:
+                    vx_mask &= self.return_vx_mask(
+                        {f'{model}-{ieye}-{thresh}-{param}': th_dict[i_key]})
+                continue
+
+            # ** Check does this model have this parameter?
+            if param not in self.possible_params[model]:
+                print(f'{param} not a possible parameter for {model}')
+                print('skipping threshold')
+                continue
+
+            if thresh=='min':
+                vx_mask &= self.pd_params[model][eye][param].gt(th_dict[i_key]) # Greater than
+            elif thresh=='max':
+                vx_mask &= self.pd_params[model][eye][param].lt(th_dict[i_key]) # less than
+            elif thresh=='bound':
+                vx_mask &= self.pd_params[model][eye][param].gt(th_dict[i_key][0]) # Greater than
+                vx_mask &= self.pd_params[model][eye][param].lt(th_dict[i_key][1]) # less than
+            else:
+                sys.exit()
 
         return vx_mask
     
@@ -282,12 +327,18 @@ class Csf2EGetter(object):
             param = [param]
         params_out = []
         for i_param in param:
+            self.pd_params[model][eye][i_param][vx_mask]
             params_out.append(self.pd_params[model][eye][i_param][vx_mask])
         if len(params_out)==1:
             params_out = params_out[0]
         
         return params_out
 
+    def return_w_mean(self, model, eye, param, vx_mask):
+        p_masked = self.return_th_param(model, eye, param, vx_mask)
+        rsq_masked = self.return_th_param(model, eye, 'rsq', vx_mask)
+        p_wmean = (p_masked*rsq_masked).sum()/rsq_masked.sum()
+        return p_wmean
 # ************************************************************************************************
 # ************************************************************************************************
 # ************************************************************************************************
@@ -301,6 +352,366 @@ class AmbPlotter(Csf2EGetter):
         self.pol_bounds = kwargs.get("pol_bounds",np.linspace(0,2*np.pi,13))
         self.plot_cols = get_plot_cols()
         #
+        # Load TS
+        real_tc = amb_load_real_tc(sub=self.sub,task_list=['pRFLE', 'pRFRE', 'CSFLE', 'CSFRE'] )
+        self.real_tc ={}
+        self.real_tc['CSF'] = {}
+        self.real_tc['pRF'] = {}
+        for eye in ['LE', 'RE']:
+            self.real_tc['CSF'][eye] = real_tc[f'CSF{eye}']                    
+            self.real_tc['pRF'][eye] = real_tc[f'pRF{eye}'] 
+        
+        csf_pred_tc = amb_load_pred_tc(
+            self.sub, task_list=['CSFLE', 'CSFRE'], model_list='CSF', 
+            roi_fit=self.roi_fit, fit_stage=self.fit_stage)                        
+        prf_pred_tc = amb_load_pred_tc(
+            self.sub, task_list=['pRFLE', 'pRFRE'], model_list=['gauss', 'norm'], 
+            roi_fit=self.roi_fit, fit_stage=self.fit_stage)                        
+        self.pred_tc = {}
+        self.pred_tc['CSF'] = {}
+        self.pred_tc['gauss'] = {}
+        self.pred_tc['norm'] = {}
+        for eye in ['LE', 'RE']:
+            self.pred_tc['CSF'][eye] = csf_pred_tc[f'CSF{eye}']['CSF']                    
+            self.pred_tc['gauss'][eye] = prf_pred_tc[f'pRF{eye}']['gauss']
+            self.pred_tc['norm'][eye] = prf_pred_tc[f'pRF{eye}']['norm']
+
+        # Load CSF curves
+        self.csf_curves = {}
+        self.csf_curves['LE'] = get_csf_curves(
+            self.prfpy_stim['CSF'].log_SFs, 
+            *list(self.params['CSF']['LE'][:,0:4].T))
+        self.csf_curves['RE'] = get_csf_curves(
+            self.prfpy_stim['CSF'].log_SFs, 
+            *list(self.params['CSF']['RE'][:,0:4].T))
+        # Also by time
+        self.csf_curve_seqs = {}
+        self.csf_curve_seqs['LE'] = get_csf_curves(
+            np.log10(self.prfpy_stim['CSF'].SF_seq), 
+            *list(self.params['CSF']['LE'][:,0:4].T))
+        self.csf_curve_seqs['RE'] = get_csf_curves(
+            np.log10(self.prfpy_stim['CSF'].SF_seq), 
+            *list(self.params['CSF']['RE'][:,0:4].T))
+        
+        # Load RFs
+        self.csf_rfs = {}
+        self.csf_rfs['LE'] = csf_exponential(
+            self.prfpy_stim['CSF'].log_SF_grid,
+            self.prfpy_stim['CSF'].CON_S_grid,
+            *list(self.params['CSF']['LE'][:,0:4].T))
+        self.csf_rfs['RE'] = csf_exponential(
+            self.prfpy_stim['CSF'].log_SF_grid,
+            self.prfpy_stim['CSF'].CON_S_grid,
+            *list(self.params['CSF']['RE'][:,0:4].T))
+        
+    def csf_tc_plot(self, eye, idx):
+        
+        this_params = self.params['CSF'][eye][idx,:]
+        rfs = csf_exponential(
+            self.prfpy_stim['CSF'].log_SF_grid, 
+            self.prfpy_stim['CSF'].CON_S_grid, 
+            *list(this_params[:,0:4].T))
+
+        csf_curves = get_csf_curves(
+            self.prfpy_stim['CSF'].log_SFs, 
+            *list(this_params[:,0:4].T))
+        #
+        fig, ax = plt.subplots(idx.shape[0], 3,gridspec_kw={'width_ratios': [2,2,5]})    
+        fig.set_size_inches(15,idx.shape[0]*2.5)
+        xmin  = np.min(self.prfpy_stim['CSF'].SFs)
+        xmax  = np.max(self.prfpy_stim['CSF'].SFs)
+        ymin  = np.min(self.prfpy_stim['CSF'].CONs)
+        ymax  = np.max(self.prfpy_stim['CSF'].CONs)
+        plt_i = 0
+        for i in range(len(idx)):
+
+            # ax[plt_i,0].plot(
+            #     self.prfpy_stim['CSF'].SFs,
+            #     csf_curves[i,:].T)        
+            ax[plt_i,0].loglog(self.prfpy_stim['CSF'].SFs,csf_curves[i,:].T)
+            lt_curve = (self.prfpy_stim['CSF'].CON_grid>=csf_curves[i,:].T).ravel()
+            ax[plt_i,0].scatter(
+                self.prfpy_stim['CSF'].SF_grid.ravel()[lt_curve],
+                self.prfpy_stim['CSF'].CON_grid.ravel()[lt_curve],
+                c='y'
+            )
+            ax[plt_i,0].scatter(
+                self.prfpy_stim['CSF'].SF_grid.ravel()[~lt_curve],
+                self.prfpy_stim['CSF'].CON_grid.ravel()[~lt_curve],
+                c='r'
+            )            
+            # ax[plt_i,0].set_xlim(1,2**10)
+            ax[plt_i,0].set_ylim(10**-1,ymax)
+            # ax[plt_i,0].set_ylim(0,100)
+            ax[plt_i,0].set_xlabel('SF')
+            ax[plt_i,0].set_ylabel('Contrast')
+            ax[plt_i,1].imshow(
+                rfs[i,:,:], alpha=0.1, vmin=0, vmax=1)
+                # extent=[xmin,xmax,ymin,ymax], alpha=0.1, vmin=0, vmax=1)
+            param_text = ''
+            
+            for p in self.p_labels['CSF'].keys():
+                param_text += f'{p}={this_params[i,self.p_labels["CSF"][p]]:.2f}; '
+            # Find nearest SF
+            
+            ax[plt_i,2].plot(self.pred_tc['CSF'][eye][idx[i],:])
+            ax[plt_i,2].plot(self.real_tc['CSF'][eye][idx[i],:])
+            # stim_on = CSF_stim.SF_seq != 0
+            # ax[plt_i,2].plot(stim_on)        
+            ax[plt_i,2].set_title(param_text)
+
+            plt_i += 1
+        update_fig_fontsize(fig, 10)        
+
+    def csf_tc_plotV2(self, eye, idx, time_pt=None):
+        
+        do_current_stim = True
+        if time_pt==None:
+            do_current_stim = False
+            time_pt = 213
+
+        #
+        fig, ax = plt.subplots(1, 2,gridspec_kw={'width_ratios': [2,5]})    
+        fig.set_size_inches(15,5)
+
+        sf_vect = self.prfpy_stim['CSF'].SF_seq
+        inv_c_vect = 100/self.prfpy_stim['CSF'].CON_seq
+        # Setup ax 0
+        ax[0].set_yscale('log')
+        ax[0].set_xscale('log')
+        ax[0].set_xlabel('SF')
+        ax[0].set_ylabel('100/Contrast')
+        ax[0].set_title(f'{self.sub}: CSF - {eye}, vx={idx}')
+        ax[0].plot(self.prfpy_stim['CSF'].SFs, self.csf_curves[eye][idx,:].T, lw=5, color=self.plot_cols[eye]) # Plot csf curve
+        
+        # Plot stimuli from 0:time_pt [Different color for in vs outside rf]
+        bool_lt = inv_c_vect < self.csf_curve_seqs[eye][idx,:]
+        id_to_plot = np.arange(time_pt)
+        id_lt = id_to_plot[bool_lt[0:time_pt]]
+        id_gt = id_to_plot[~bool_lt[0:time_pt]]
+        ax[0].scatter(sf_vect[id_lt],inv_c_vect[id_lt], c='r', s=100)
+        ax[0].scatter(sf_vect[id_gt],inv_c_vect[id_gt], c='k', s=100)
+        if do_current_stim:
+            if sf_vect[time_pt]==0:
+                ax[0].text(.5, .5, 'BASELINE',
+                        horizontalalignment='center',
+                        verticalalignment='top',
+                        backgroundcolor='1',
+                        transform=ax[0].transAxes)            
+            else:
+                ax[0].scatter(sf_vect[time_pt],inv_c_vect[time_pt], c='g', marker='*', s=500)
+
+        x_lim = (.25,20)
+        y_lim = (1, 500)
+        ax[0].set_xlim(x_lim)
+        ax[0].set_ylim(y_lim)
+        ax[0].set_aspect('equal')
+        param_text = ''
+        param_ct = 0   
+        plabels_to_show = ['width_r', 'log10_sf0', 'log10_maxC', 'a_val', 'bold_baseline', 'rsq', 'sfmax']     
+        for p in plabels_to_show:
+            param_text += f'{p}={self.pd_params["CSF"][eye][p][idx]:.2f}; '
+            param_ct += 1
+            if param_ct>3:
+                param_text += '\n'
+                param_ct = 0
+
+        this_pred_tc = self.pred_tc['CSF'][eye][idx,:]
+        this_real_tc = self.real_tc['CSF'][eye][idx,:]
+        tc_ymin = np.min([this_pred_tc.min(), this_real_tc.min()])
+        tc_ymax = np.max([this_pred_tc.max(), this_real_tc.max()])
+        ax[1].set_ylim(tc_ymin, tc_ymax)
+        tc_x = np.arange(this_pred_tc.shape[0]) * 1.5
+        ax[1].plot(
+            tc_x[0:time_pt],
+            this_pred_tc[0:time_pt], '-', color=self.plot_cols[eye], markersize=10, lw=5, alpha=.5)
+        ax[1].plot(            
+            tc_x[0:time_pt],
+            this_real_tc[0:time_pt], '^', color='k', markersize=5, lw=5, alpha=.5)
+        ax[1].plot((0,tc_x[-1]), (0,0), 'k')   
+        ax[1].set_title(param_text)
+        fig.set_tight_layout('tight')
+        update_fig_fontsize(fig, 20)        
+        return fig
+        # *** END ***
+
+    def csf_tc_plotV3(self, eye, idx, time_pt=None):
+        do_current_stim = True
+        if time_pt==None:
+            do_current_stim = False
+            time_pt = 213
+        
+        this_params = self.params['CSF'][eye][idx,:]
+
+        #
+        fig, ax = plt.subplots(1, 4,gridspec_kw={'width_ratios': [2,1,1,6]})    
+        fig.set_size_inches(15,5)
+
+        sf_vect = self.prfpy_stim['CSF'].SF_seq
+        inv_c_vect = 100/self.prfpy_stim['CSF'].CON_seq
+        # Setup ax 0
+        ax[0].set_yscale('log')
+        ax[0].set_xscale('log')
+        ax[0].set_aspect('equal')
+        ax[0].set_xlabel('SF')
+        ax[0].set_ylabel('100/Contrast')
+        ax[0].set_title(f'{self.sub}: CSF - {eye}, vx={idx}')
+        ax[0].plot(self.prfpy_stim['CSF'].SFs, self.csf_curves[eye][idx,:].T, lw=5, color=self.plot_cols[eye]) # Plot csf curve
+        
+        # Plot stimuli from 0:time_pt [Different color for in vs outside rf]
+        bool_lt = inv_c_vect < self.csf_curve_seqs[eye][idx,:]
+        id_to_plot = np.arange(time_pt)
+        id_lt = id_to_plot[bool_lt[0:time_pt]]
+        id_gt = id_to_plot[~bool_lt[0:time_pt]]
+        ax[0].scatter(sf_vect[id_lt],inv_c_vect[id_lt], c='r', s=100)
+        ax[0].scatter(sf_vect[id_gt],inv_c_vect[id_gt], c='k', s=100)
+        if do_current_stim:
+            if sf_vect[time_pt]==0:
+                ax[0].text(.5, .5, 'BASELINE',
+                        horizontalalignment='center',
+                        verticalalignment='top',
+                        backgroundcolor='1',
+                        transform=ax[0].transAxes)            
+            else:
+                ax[0].scatter(sf_vect[time_pt],inv_c_vect[time_pt], c='g', marker='*', s=500)
+
+        x_lim = (.25,20)
+        y_lim = (1, 500)
+        ax[0].set_xlim(x_lim)
+        ax[0].set_ylim(y_lim)
+        param_text = ''
+        param_ct = 0        
+        for p in self.p_labels['CSF'].keys():
+            param_text += f'{p}={this_params[self.p_labels["CSF"][p]]:.2f}; '
+            param_ct += 1
+            if param_ct>3:
+                param_text += '\n'
+                param_ct = 0
+
+        # RF - in DM space:
+        ax[1].imshow(self.csf_rfs[eye][idx,:,:], vmin=0, vmax=1)#, alpha=.5)        
+        for i in range(6):
+            ax[1].plot((i-.5,i-.5), (-.5,13.5), 'k')
+            ax[2].plot((i-.5,i-.5), (-.5,13.5), 'k')
+        for i in range(14):
+            ax[1].plot((-0.5,5.5), (i-.5,i-.5), 'k')
+            ax[2].plot((-0.5,5.5), (i-.5,i-.5), 'k')
+
+        ax[1].grid('both')
+        ax[1].axis('off')
+        ax[1].set_title('RF')
+        
+        ax[2].imshow(self.prfpy_stim['CSF'].design_matrix[:,:,time_pt], vmin=0, vmax=1)
+        ax[2].axis('off')
+        ax[2].set_title('DM space')
+        if not do_current_stim:
+            ax[2].set_visible(False)
+        # TC
+        this_pred_tc = self.pred_tc['CSF'][eye][idx,:]
+        this_real_tc = self.real_tc['CSF'][eye][idx,:]
+        tc_ymin = np.min([this_pred_tc.min(), this_real_tc.min()])
+        tc_ymax = np.max([this_pred_tc.max(), this_real_tc.max()])
+        tc_x = np.arange(this_pred_tc.shape[0]) * 1.5
+        ax[-1].set_ylim(tc_ymin, tc_ymax)
+        ax[-1].plot(tc_x[0:time_pt],this_pred_tc[0:time_pt], '-', color=self.plot_cols[eye], markersize=10, lw=5, alpha=.5)
+        ax[-1].plot(tc_x[0:time_pt],this_real_tc[0:time_pt], '^', color='k', markersize=5, lw=5, alpha=.5)
+        ax[-1].plot((0,tc_x[-1]), (0,0), 'k')   
+        ax[-1].set_title(param_text)
+        fig.set_tight_layout('tight')
+        update_fig_fontsize(fig, 20)        
+        return fig
+        # *** END ***
+
+    def csf_tc_plotV4(self, eye, idx, time_pt=213):
+        
+        this_params = self.params['CSF'][eye][idx,:]
+        sf_vect = self.prfpy_stim['CSF'].SF_seq
+        c_vect = self.prfpy_stim['CSF'].CON_seq
+        inv_c_vect = 100/c_vect
+
+        #
+        fig, ax = plt.subplots(1, 5,gridspec_kw={'width_ratios': [2,2,1,1,5]})    
+        fig.subplots_adjust(wspace=None)
+        fig.set_size_inches(25,5)
+
+        # Stimulus:
+        grate = grate_texture(
+            sf=sf_vect[time_pt],
+            con=c_vect[time_pt])
+        ax[0].imshow(grate, vmin=-1, vmax=1, cmap='Greys')
+        ax[0].axis('off')
+        ax[0].set_title(f'SF={sf_vect[time_pt]:.3f}, C={c_vect[time_pt]:.2f}')
+        # Setup ax 1
+        ax[1].set_yscale('log')
+        ax[1].set_xscale('log')
+        ax[1].set_xlabel('SF')
+        ax[1].set_ylabel('100/Contrast')
+        ax[1].set_title(f'{self.sub}: CSF - {eye}, vx={idx}')
+        ax[1].plot(self.prfpy_stim['CSF'].SFs, self.csf_curves[eye][idx,:].T, lw=5, color=self.plot_cols[eye]) # Plot csf curve
+        
+        # Plot stimuli from 0:time_pt [Different color for in vs outside rf]
+        bool_lt = inv_c_vect < self.csf_curve_seqs[eye][idx,:]
+        id_to_plot = np.arange(time_pt)
+        id_lt = id_to_plot[bool_lt[0:time_pt]]
+        id_gt = id_to_plot[~bool_lt[0:time_pt]]
+        ax[1].scatter(sf_vect[id_lt],inv_c_vect[id_lt], c='r', s=100)
+        ax[1].scatter(sf_vect[id_gt],inv_c_vect[id_gt], c='k', s=100)
+        if sf_vect[time_pt]==0:
+            ax[1].text(.5, .5, 'BASELINE',
+                    horizontalalignment='center',
+                    verticalalignment='top',
+                    backgroundcolor='1',
+                    transform=ax[1].transAxes)            
+        else:
+            ax[1].scatter(sf_vect[time_pt],inv_c_vect[time_pt], c='g', marker='*', s=500)
+
+        x_lim = (.25,20)
+        y_lim = (1, 500)
+        ax[1].set_xlim(x_lim)
+        ax[1].set_ylim(y_lim)
+        # NEXT AXES
+        param_text = ''
+        param_ct = 0        
+        for p in self.p_labels['CSF'].keys():
+            param_text += f'{p}={this_params[self.p_labels["CSF"][p]]:.2f}; '
+            param_ct += 1
+            if param_ct>3:
+                param_text += '\n'
+                param_ct = 0
+
+        # RF - in DM space:
+        for i in range(6):
+            ax[2].plot((i-.5,i-.5), (-.5,13.5), 'k')
+            ax[3].plot((i-.5,i-.5), (-.5,13.5), 'k')
+        for i in range(14):
+            ax[2].plot((-0.5,5.5), (i-.5,i-.5), 'k')
+            ax[3].plot((-0.5,5.5), (i-.5,i-.5), 'k')
+
+        ax[2].imshow(self.csf_rfs[eye][idx,:,:], vmin=0, vmax=1)#, alpha=.5)        
+        ax[2].grid('both')
+        ax[2].axis('off')
+        ax[2].set_title('RF')
+        
+        ax[3].imshow(self.prfpy_stim['CSF'].design_matrix[:,:,time_pt], vmin=0, vmax=1)
+        ax[3].axis('off')
+        ax[3].set_title('DM space')
+
+        # TC
+        this_pred_tc = self.pred_tc['CSF'][eye][idx,:]
+        this_real_tc = self.real_tc['CSF'][eye][idx,:]
+        tc_ymin = np.min([this_pred_tc.min(), this_real_tc.min()])
+        tc_ymax = np.max([this_pred_tc.max(), this_real_tc.max()])
+        tc_x = np.arange(this_pred_tc.shape[0]) * 1.5
+        ax[-1].set_ylim(tc_ymin, tc_ymax)
+        ax[-1].plot(tc_x[0:time_pt],this_pred_tc[0:time_pt], '-', color=self.plot_cols[eye], markersize=10, lw=5, alpha=.5)
+        ax[-1].plot(tc_x[0:time_pt],this_real_tc[0:time_pt], '^', color='k', markersize=5, lw=5, alpha=.5)
+        ax[-1].plot((0,tc_x[-1]), (0,0), 'k')   
+        ax[-1].set_title(param_text)
+        fig.set_tight_layout('tight')
+        update_fig_fontsize(fig, 20)        
+        return fig
+        # *** END ***
+
 
     def arrows_drop(self, axs, th_dict=None,model='gauss', **kwargs):
         '''
@@ -542,7 +953,7 @@ class AmbPlotter(Csf2EGetter):
             vx_mask = self.return_vx_mask(th_dict)
 
         do_binning = kwargs.get("do_binning", False)
-        patch_col = kwargs.get("patch_col", self.plot_cols["RE"])
+        patch_col = kwargs.get("patch_col", self.plot_cols[eye])
         ecc_bounds = kwargs.get("ecc_bounds", self.ecc_bounds)
         pol_bounds = kwargs.get("pol_bounds", self.pol_bounds)
         do_patch = kwargs.get("do_patch", True)
@@ -630,16 +1041,18 @@ class AmbPlotter(Csf2EGetter):
         dot_vmax = kwargs.get("dot_vmax", None)
         # *** *** *** *** *** *** *** *** *** *** ***         
         # X,Y positions from specified task (ub=unbinned)
-        x_eye, x_id = x_param.split('-')
-        y_eye, y_id = y_param.split('-')
-        
-        X2plot = self.return_th_param(task=x_eye, param=x_id, vx_mask=vx_mask)[0]
-        Y2plot = self.return_th_param(task=y_eye, param=y_id, vx_mask=vx_mask)[0]
+        x_mod, x_eye, x_id = x_param.split('-')
+        y_mod, y_eye, y_id = y_param.split('-')
 
+        X2plot = self.return_th_param(
+            model=x_mod, eye=x_eye, param=x_id, vx_mask=vx_mask)
+        Y2plot = self.return_th_param(
+            model=y_mod, eye=y_eye, param=y_id, vx_mask=vx_mask)
+        XY_corr = np.corrcoef(X2plot,Y2plot)[0,1]
+        print(f'XY correlation: {XY_corr:.3f}')
         C2plot = dot_col
         S2plot = dot_size
         alpha2plot = dot_alpha
-
         scat_col = axs.scatter(
             X2plot, Y2plot, 
             c=C2plot, s=S2plot, alpha=alpha2plot, 
@@ -651,6 +1064,7 @@ class AmbPlotter(Csf2EGetter):
                 cb.set_label(kwargs['dot_col'])
         if do_line:
             self._plot_bin_line(X2plot, Y2plot, X2plot, axs=axs, **kwargs)
+            self._plot_bin_line(X2plot, Y2plot, Y2plot, axs=axs, **kwargs)
         if do_equal:
             axmin = np.min([X2plot.min(),Y2plot.min()])
             axmax = np.max([X2plot.max(),Y2plot.max()])
@@ -663,7 +1077,7 @@ class AmbPlotter(Csf2EGetter):
 
         axs.set_xlabel(x_param)
         axs.set_ylabel(y_param)
-        self._add_axs_basics(axs,xlabel=x_param, ylabel=y_param, **kwargs)    
+        self._add_axs_basics(axs,xlabel=x_param, ylabel=y_param, title=f'{self.sub}, corr: {XY_corr:.3f}', **kwargs)    
 
     def hist_generic(self, axs, vx_mask, param, **kwargs):
         '''
@@ -678,10 +1092,15 @@ class AmbPlotter(Csf2EGetter):
         '''
         alpha = kwargs.get('alpha', 0.5)
         n_bins = kwargs.get('n_bins', 20)
+        bins = kwargs.get('bins', [])
+        if bins==[]:
+            bins = n_bins
+        p_mod, p_eye, p_id = param.split('-')
 
-        p_eye, p_id = param.split('-')
-        param2plot = self.return_th_param(task=p_eye, param=p_id, vx_mask=vx_mask)[0]
-        axs.hist(param2plot, bins=n_bins, color=self.plot_cols[p_eye],alpha=alpha,label=param)
+        param2plot = self.return_th_param(
+            model=p_mod, eye=p_eye, param=p_id, vx_mask=vx_mask)
+        
+        axs.hist(param2plot, bins=bins, color=self.plot_cols[p_eye],alpha=alpha,label=param)
         axs.legend()
         self._add_axs_basics(axs, **kwargs)    
 
@@ -748,8 +1167,8 @@ class AmbPlotter(Csf2EGetter):
         dot_col         ""
         do_lines        do the binned lines?             
         '''
+        ecc_info = kwargs.get('ecc_info', None)
         do_line = kwargs.get('do_line', False)
-        ecc_task = kwargs.get('ecc_task', None)
         return_vals = kwargs.get('return_vals', False) # return the ecc and param values (use this for arrows)
         do_legend = kwargs.get('do_legend', False)
         do_scatter = kwargs.get('do_scatter', True)
@@ -767,12 +1186,16 @@ class AmbPlotter(Csf2EGetter):
         dot_vmax = kwargs.get("dot_vmax", None)
         # *** *** *** *** *** *** *** *** *** *** ***         
         # ID the relevant parameters
-        p_task, p_id = param.split('-')
-        if ecc_task == None:
-            ecc_task = p_task # default to same task        
+        p_mod, p_eye, p_id = param.split('-')
+        if ecc_info == None:
+            ecc_mod = p_mod # default to same task        
+            ecc_eye = p_eye
+        else:
+            ecc_mod, ecc_eye = ecc_info.split('-')
         # Get the eccentricity for relevant points        
-        ecc_val = self.return_th_param(task=ecc_task, param='ecc', vx_mask=vx_mask)[0] 
-        param_val = self.return_th_param(task=p_task, param=p_id, vx_mask=vx_mask)[0] 
+        ecc_val = self.return_th_param(model=ecc_mod, eye=ecc_eye, param='ecc', vx_mask=vx_mask) 
+        param_val = self.return_th_param(
+            model=p_mod, eye=p_eye, param=p_id, vx_mask=vx_mask)
 
         X2plot,Y2plot = ecc_val, param_val
         C2plot = dot_col
@@ -790,7 +1213,7 @@ class AmbPlotter(Csf2EGetter):
                 if not isinstance(kwargs['dot_col'], np.ndarray): 
                     cb.set_label(kwargs['dot_col'])
         if do_line:
-            self._plot_bin_line(X2plot, Y2plot, X2plot, axs=axs, line_col=self.plot_cols[ecc_task],line_label=p_task, **kwargs)                
+            self._plot_bin_line(X2plot, Y2plot, X2plot, axs=axs, line_col='k',line_label=p_id, **kwargs)                
         self._add_axs_basics(axs, **kwargs)    
         if return_vals:
             return X2plot, Y2plot

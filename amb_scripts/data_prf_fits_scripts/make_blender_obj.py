@@ -14,22 +14,21 @@ from amb_scripts.load_saved_info import *
 from nibabel.freesurfer.io import read_morph_data, write_morph_data
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+
+brainder_dir = os.environ.get('PATH_HOME')
 derivatives_dir = '/data1/projects/dumoulinlab/Lab_members/Marcus/projects/amblyopia_emc/derivatives'
 
-surf_scr_shot_dir = opj(derivatives_dir, 'surf_shots')
-if not os.path.exists(surf_scr_shot_dir):
-    os.mkdir(surf_scr_shot_dir)
-
+blender_dir = opj(derivatives_dir, 'blender_objs')
+if not os.path.exists(blender_dir):
+    os.mkdir(blender_dir)
 
 
 def main(argv):
 
     """
 ---------------------------------------------------------------------------------------------------
-WRITE TO FREESURFER
-AS PER https://docs.google.com/document/d/104Q8RV0QI0aZlYgs9sDo8eWVtEwebNsgl89sqim6LPU/edit
-Drawing ROIs with freeview tutorial...
-Edited by MD 
+WRITE A BLENDER FILE
+Made by MD 
 
 Arguments:
     -s|--sub    <sub number>        number of subject's FreeSurfer directory from which you can 
@@ -60,15 +59,14 @@ Example:
     roi_fit     = 'all'
     rsq_th      = 0.1
     ecc_th      = 5
-    scr_shot    = False
     overwrite   = True
-    cmap        = 'viridis'
     under_surf  = 'inflated'
+    scr_shot    = False
     verbose     = True
 
     try:
         opts = getopt.getopt(argv,"h:s:n:t:m:v:",["help", "sub=", "ses=", "task=", "param=", "model=", 
-                                              "rsq_th=", "roi_fit=", "ecc_th=", "under_surf=", "cmap=", "scr_shot", "verbose", "overwrite"])[0]
+                                              "rsq_th=", "roi_fit=", "ecc_th=", "under_surf=", "scr_shot","verbose", "overwrite"])[0]
     except getopt.GetoptError:
         print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
@@ -95,13 +93,11 @@ Example:
         elif opt in ("--model"):
             model = arg
         elif opt in ("--under_surf"):
-            under_surf = arg         
-        elif opt in ("--cmap"):
-            cmap = arg                        
-        elif opt in ("--scr_shot"):
-            scr_shot = True            
+            under_surf = arg            
         elif opt in ("--overwrite"):
             overwrite = True
+        elif opt in ("--scr_shot"):
+            scr_shot = True            
         elif opt in ("-v", "--verbose"):
             verbose = True
         else:
@@ -146,28 +142,11 @@ Example:
     else:
         masked_param = np.zeros_like(total_mask, dtype=float)
         masked_param[total_mask] =  prf_params[total_mask,param_dict[param]]
-        
-        if param=='width_r':
-            fv_vmin=0
-            fv_vmax=3
-        elif param=='sf0':
-            fv_vmin=0
-            fv_vmax=6        
-        elif param=='maxC':
-            fv_vmin=0
-            fv_vmax=200
-        elif param=='ecc':
-            fv_vmin=0
-            fv_vmax=5
-        elif param=='rsq':
-            fv_vmin=0
-            fv_vmax=1
-        else:        
-            fv_vmin = np.min(prf_params[total_mask,param_dict[param]])
-            fv_vmax = np.max(prf_params[total_mask,param_dict[param]])
+        fv_vmin = np.min(prf_params[total_mask,param_dict[param]])
+        fv_vmax = np.max(prf_params[total_mask,param_dict[param]])
         exclude_min_val = fv_vmin - 1
         masked_param[~total_mask] = exclude_min_val
-        fv_cmap_name = cmap
+        fv_cmap_name = 'cool'
 
     # SAVE RESULTS AS A CURVE FILE
     lh_c = read_morph_data(opj(path_to_sub_surf,'lh.curv'))
@@ -205,18 +184,10 @@ Example:
     # Otherwise just load the surface...
     os.chdir(path_to_sub_surf) # move to freeview dir
     # under_surf = 'inflated' # inflated
-    if sub=='sub-01':
-        elevation_val = -35
-    elif sub=='sub-02':
-        elevation_val = -20
-    else:
-        elevation_val = -20
-    fview_cmd = f'''freeview -f lh.{under_surf}:overlay=lh.{surf_name}:{overlay_custom_str} rh.{under_surf}:overlay=rh.{surf_name}:{overlay_custom_str} --camera Azimuth 90 Elevation {elevation_val} --colorscale '''
-
-    if scr_shot:
-        fview_cmd += f' -ss {surf_scr_shot_dir}/{surf_name}'
-
+    # if 
+    fview_cmd = f'''freeview  -f lh.{under_surf}:overlay=lh.{surf_name}:{overlay_custom_str} rh.{under_surf}:overlay=rh.{surf_name}:{overlay_custom_str} & '''
     os.system(fview_cmd)
+    # os.system('freeview ')
 
 '''
 [-3.14,255,  0,  0,

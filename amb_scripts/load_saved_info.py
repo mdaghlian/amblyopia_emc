@@ -24,7 +24,12 @@ default_prf_dir = opj(derivatives_dir, 'prf')
 dm_dir = opj(os.path.dirname(os.path.realpath(__file__)), 'dm_files' )
 psc_tc_dir = opj(derivatives_dir, 'psc_tc')
 
-class PrfParamGetterv2(object):
+# class PrfALLTM(object):
+#     def __init__(self,sub, eye_list=['LE', 'RE', 'Ed', 'Em'], model_list=['gauss', 'norm','CSF'], **kwargs):
+#         self.sub = sub
+#         self.eye_list = eye
+#         self.model = model
+class Prf1T1M(object):
     '''
     Used to hold parameters for 1 subject, 1 task & 1 model
     & To return user specified masks 
@@ -40,35 +45,53 @@ class PrfParamGetterv2(object):
     return_vx_mask: returns a mask for voxels, specified by the user
     return_th_param: returns the specified parameters, masked
     '''
-    def __init__(self,sub, task_list, model_list, **kwargs):
+    def __init__(self,sub, eye, model, **kwargs):
         '''
         params_LE/X        np array, of all the parameters in the LE/X condition
         model               str, model: e.g., gauss or norm
         '''
-        self.sub = kwargs.get('sub', None)
-        self.n_vox = amb_load_nverts(sub)
+        self.sub = sub
+        self.eye = eye
+        self.model = model
+        if self.model in ['gauss', 'norm']:
+            self.task = f'pRF{eye}'
+        elif self.model == 'CSF':
+            self.task = f'CSF{eye}'
+        
+        self.n_vox = np.sum(amb_load_nverts(sub))
+        self.n_vox_L,self.n_vox_R = amb_load_nverts(sub)
+        self.roi_fit = kwargs.get('roi_fit', 'all')
+        self.fit_stage = kwargs.get('fit_stage', 'iter')
+
         self.params_np = amb_load_prf_params(
-            sub=sub, task_list=task_list, model_list=model_list, **kwargs)
+            sub=self.sub, task_list=self.task, model_list=self.model, roi_fit=self.roi_fit, fit_stage=self.fit_stage)[self.task][self.model]
         
         self.params_dd = {}
-        for task in task_list:
-            self.params_dd[task] = {}
-            for model in model_list:
-                self.params_dd[task][model] = {}
-                mod_labels = print_p()[model] 
-                for key in mod_labels.keys():                    
-                    self.params_dd[task][model][key] = self.params_np[task][model][:,mod_labels[key]]
-                # Ecc, pol
-                self.params_dd[task][model]['ecc'], self.params_dd[task][model]['pol'] = coord_convert(
-                    self.params_dd[task][model]['x'],self.params_dd[task][model]['y'],
-                    'cart2pol')
-                
-        # Convert to PD
-        self.pd_params = {}
-        for task in task_list:
-            self.pd_params[task] = {}
-            for model in model_list:                
-                self.pd_params[task][model] = pd.DataFrame(self.params_dd[task][model])
+        mod_labels = print_p()[model] 
+        for key in mod_labels.keys():                    
+            self.params_dd[key] = self.params_np[:,mod_labels[key]]
+        
+        # Calculate extra interesting stuff
+        if self.model in ['gauss', 'norm']:
+            # Ecc, pol
+            self.params_dd['ecc'], self.params_dd['pol'] = coord_convert(
+                self.params_dd['x'],self.params_dd['y'],'cart2pol')        
+        if self.model=='norm':
+            # -> size ratio:
+            self.params_dd['size_ratio'] = self.params_dd['n_sigma'] / self.params_dd['a_sigma']
+            self.params_dd['amp_ratio'] = self.params_dd['a_val'] / self.params_dd['c_val']
+            self.params_dd['bd_ratio'] = self.params_dd['b_val'] / self.params_dd['d_val']
+        if self.model=='CSF':
+            self.params_dd['log10_sf0'] = np.log10(self.params_dd['sf0'])
+            self.params_dd['log10_maxC'] = np.log10(self.params_dd['maxC'])
+            self.params_dd['sfmax'] = np.nan_to_num(
+                10**(np.sqrt(self.params_dd['log10_maxC']/(self.params_dd['width_r']**2)) + \
+                                            self.params_dd['log10_sf0']))            
+            self.params_dd['sfmax'][self.params_dd['sfmax']>100] = 100 # MAX VALUE
+            self.params_dd['log10_sfmax'] = np.log10(self.params_dd['sfmax'])
+
+        # Convert to PD           
+        self.pd_params = pd.DataFrame(self.params_dd)
 
     def return_vx_mask(self, th={}):
         '''
@@ -76,10 +99,7 @@ class PrfParamGetterv2(object):
         th keys must be split into 4 parts
         'task-model-comparison-param' : value
         e.g.: to exclude gauss fits with rsq less than 0.1
-        th = {'pRFLE-gauss-min-rsq': 0.1 } 
-
-        task        -> pRFLE, pRFRE
-        model       -> gauss, norm
+        th = {'min-rsq': 0.1 } 
         comparison  -> min, max
         param       -> any of... (model dependent)
             "x", "y", "ecc", "pol"
@@ -91,24 +111,23 @@ class PrfParamGetterv2(object):
 
         # Start with EVRYTHING        
         vx_mask = np.ones(self.n_vox, dtype=bool)
-        # ADD ALL_th to both LE and RE
         for th_key in th.keys():
-            print(th_key)
-            # th_key_str = list(th_key)[0] # convert to string...
-            # print(th_key_str.split('-'))
-            # sys.exit()
-            # task,model,comp,p = th_key_str.split('-')
-            # th_val = th[th_key]
-            # if comp=='min':
-            #     vx_mask &= self.pd_params[task][model][p].gt(th_val)
-            # elif comp=='max':
-            #     vx_mask &= self.pd_params[task][model][p].lt(th_val)
-            # else:
-            #     sys.exit()
+            th_key_str = str(th_key) # convert to string... 
+            comp, p = th_key_str.split('-')
+            th_val = th[th_key]
+            if comp=='min':
+                vx_mask &= self.pd_params[p].gt(th_val)
+            elif comp=='max':
+                vx_mask &= self.pd_params[p].lt(th_val)
+            elif comp=='bound':
+                vx_mask &= self.pd_params[p].gt(th_val[0])
+                vx_mask &= self.pd_params[p].lt(th_val[1])
+            else:
+                sys.exit()
 
-        return vx_mask
+        return vx_mask.to_numpy()
     
-    # def return_th_param(self, task, param, vx_mask=None):
+    # def return_th_param(self, param, vx_mask=None):
     #     '''
     #     For a specified task (LE, RE, Ed)
     #     return all the parameters listed, masked by vx_mask        

@@ -78,7 +78,7 @@ def print_p():
         'maxC' : 2,
         'width_l' : 3,
         'a_val' : 4,
-        'baseline' : 5,
+        'bold_baseline' : 5,
         'rsq' : 6,
     }
 
@@ -126,7 +126,7 @@ def coord_convert(a,b,old2new):
         ecc = np.sqrt( a**2 + b**2 ) # Eccentricity
         pol = np.zeros_like(a)    
         pol = np.arctan2( b, a ) # Polar angle
-        pol[pol<0] += 2*np.pi
+        # pol[pol<0] += 2*np.pi
         new_a = ecc
         new_b = pol
                             

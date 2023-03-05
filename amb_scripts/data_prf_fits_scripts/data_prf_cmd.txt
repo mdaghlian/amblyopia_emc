@@ -35,7 +35,7 @@ qsub -q long.q@jupiter -pe smp 1 -wd $PWD -N REs02N -o "REs02N.txt" amb_scripts/
 
 # RUN CSF both sub, both eyes
 
-qsub -q long.q@jupiter -pe smp 1 -wd $PWD -N LEs01C -o "LEs01C.txt" amb_scripts/data_prf_fits_scripts/run_csf_fit.py -s 01 -t CSFLE -r all --bgfs
-qsub -q long.q@jupiter -pe smp 1 -wd $PWD -N REs01C -o "REs01C.txt" amb_scripts/data_prf_fits_scripts/run_csf_fit.py -s 01 -t CSFRE -r all --bgfs
-qsub -q long.q@jupiter -pe smp 1 -wd $PWD -N LEs02C -o "LEs02C.txt" amb_scripts/data_prf_fits_scripts/run_csf_fit.py -s 02 -t CSFLE -r all --bgfs
-qsub -q long.q@jupiter -pe smp 1 -wd $PWD -N REs02C -o "REs02C.txt" amb_scripts/data_prf_fits_scripts/run_csf_fit.py -s 02 -t CSFRE -r all --bgfs
+qsub -q long.q@jupiter -pe smp 1 -wd $PWD -N LEs01C -o "LEs01C.txt" amb_scripts/data_prf_fits_scripts/run_csf_fit.py -s 01 -t CSFLE -r all --tc
+qsub -q long.q@jupiter -pe smp 1 -wd $PWD -N REs01C -o "REs01C.txt" amb_scripts/data_prf_fits_scripts/run_csf_fit.py -s 01 -t CSFRE -r all --tc
+qsub -q long.q@jupiter -pe smp 1 -wd $PWD -N LEs02C -o "LEs02C.txt" amb_scripts/data_prf_fits_scripts/run_csf_fit.py -s 02 -t CSFLE -r all --tc
+qsub -q long.q@jupiter -pe smp 1 -wd $PWD -N REs02C -o "REs02C.txt" amb_scripts/data_prf_fits_scripts/run_csf_fit.py -s 02 -t CSFRE -r all --tc

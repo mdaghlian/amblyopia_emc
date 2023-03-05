@@ -49,9 +49,12 @@ def get_plot_cols():
     plot_cols = {
         "LE"            : rgba(252,141, 89, .8),#'#fd8d3c',
         "RE"            : rgba( 67,162,202, .8),#'#43a2ca',
+        "Em"            : rgba(159,150,100, .8),
+        "Ed"            : rgba(159,150,100, .8),
         #
         "gauss"          : rgba( 27, 158, 119, 0.9),
         "norm"           : rgba(217,  95,   2, 0.5),
+        "CSF"            : rgba(217, 222,   2, 0.5),
         "real"           : '#cccccc',
         }
     return plot_cols
