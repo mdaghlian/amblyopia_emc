@@ -321,7 +321,7 @@ Example:
         out_dir=surf_scr_shot_dir, 
         surf_name = f'{param}_{eye}_{model}',
         data_mask = total_mask,
-        do_scrn_shot = True,
+        do_scrn_shot = scr_shot,
         azimuth = 90,
         elevation = elevation_val,
         zoom = 1.5,

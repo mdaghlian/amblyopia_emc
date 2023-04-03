@@ -97,7 +97,7 @@ def srf_to_ply(srf_file, rgb_vals, hemi=None, values=None):
 
 
 
-def fs_to_ply(sub, data, fs_dir, under_surf='inflated', out_dir=None, **kwargs):
+def fs_to_ply(sub, data, fs_dir, mesh_name='inflated', out_dir=None, under_surf='curv', **kwargs):
     '''
     fs_to_ply:
         Create surface files for a subject, and a specific parameter.
@@ -106,12 +106,14 @@ def fs_to_ply(sub, data, fs_dir, under_surf='inflated', out_dir=None, **kwargs):
         sub             str             e.g. 'sub-01': Name of subject in freesurfer file
         data            np.ndarray      What are we plotting on the surface? 1D array, same length as the number of vertices in subject surface.
         fs_dir          str             Location of the Freesurfer folder
-        under_surf      str             What kind of surface are we plotting on? e.g., pial, inflated...
+        mesh_name      str              What kind of surface are we plotting on? e.g., pial, inflated...
                                                             Default: inflated
+        under_surf      str             What is going underneath the data (e.g., what is the background)?
+                                        default is curv. Could also be thick, (maybe smoothwm) 
         out_dir         str             Where to put the mesh files which are made
     **kwargs:
         data_mask       bool array      Mask to hide certain values (e.g., where rsquared is not a good fit)
-        data_alpha      np.ndarray      Alpha values for plotting. Where this is specified the curvature is used instead
+        data_alpha      np.ndarray      Alpha values for plotting. Where this is specified the undersurf is used instead
         surf_name       str             Name of your surface e.g., 'polar', 'rsq'
                                         *subject name is added to front of surf_name
 
@@ -145,7 +147,7 @@ def fs_to_ply(sub, data, fs_dir, under_surf='inflated', out_dir=None, **kwargs):
         print('surf_name not specified, using sub+date')
         surf_name = sub + '_' + datetime.now().strftime('%Y-%m-%d_%H-%M')
     else:
-        surf_name = sub + '_' + surf_name + '_' + under_surf
+        surf_name = sub + '_' + surf_name + '_' + mesh_name
     # If out_dir not specified, make a folder in mesh_dir
     if out_dir==None:
         out_dir = opj(mesh_dir, surf_name)
@@ -164,25 +166,24 @@ def fs_to_ply(sub, data, fs_dir, under_surf='inflated', out_dir=None, **kwargs):
     else:
         print(f'Writing: {surf_name} for {sub}')
 
-    # load curvature file values, & get number of vx in each hemisphere
+    # load the undersurf file values, & get number of vx in each hemisphere
     n_hemi_vx = []
-    curv_values = []
+    us_values = []
     for ih in ['lh.', 'rh.']:
-        with open(opj(path_to_sub_surf,f'{ih}curv'), 'rb') as h_curve:
-            h_curve.seek(15)
-            this_curv_vals = np.fromstring(h_curve.read(), dtype='>f4').byteswap().newbyteorder()
-            curv_values.append(this_curv_vals)
-            n_hemi_vx.append(this_curv_vals.shape[0])    
+        with open(opj(path_to_sub_surf,f'{ih}{under_surf}'), 'rb') as h_us:
+            h_us.seek(15)
+            this_us_vals = np.fromstring(h_us.read(), dtype='>f4').byteswap().newbyteorder()
+            us_values.append(this_us_vals)
+            n_hemi_vx.append(this_us_vals.shape[0])    
     n_vx = np.sum(n_hemi_vx)
-    curv_values = np.concatenate(curv_values)
-    # **** **** SAVE DATA AS CURVE FILE **** ****    
+    us_values = np.concatenate(us_values)    
     # Load mask for data to be plotted on surface
     data_mask = kwargs.get('data_mask', np.ones(n_vx, dtype=bool))
     data_alpha = kwargs.get('data_alpha', np.ones(n_vx))
     data_alpha[~data_mask] = 0 # Make values to be masked have alpha=0
     if not isinstance(data, np.ndarray):
-        print('Just creating curve file..')
-        surf_name = 'curv'
+        print(f'Just creating {under_surf} file..')
+        surf_name = under_surf
         data = np.zeros(n_vx)
         data_alpha = np.zeros(n_vx)        
     
@@ -199,27 +200,32 @@ def fs_to_ply(sub, data, fs_dir, under_surf='inflated', out_dir=None, **kwargs):
     data_norm.vmax = vmax
     data_col = data_cmap(data_norm(data))
 
-    # Create rgb values mapping from curv to grey cmap
-    curv_cmap = mpl.cm.__dict__['Greys'] # Always grey underneath
-    curv_norm = mpl.colors.Normalize()
-    curv_norm.vmin = -1 # Always -1,1 range...
-    curv_norm.vmax = 1  
-    curv_col = curv_cmap(curv_norm(curv_values))
+    # Create rgb values mapping from under_surf to grey cmap
+    us_cmap = mpl.cm.__dict__['Greys'] # Always grey underneath
+    us_norm = mpl.colors.Normalize()
+    if under_surf=='curv':
+        us_norm.vmin = -1 # Always -1,1 range...
+        us_norm.vmax = 1  
+    elif under_surf=='thickness':        
+        us_norm.vmin = 0 # Always -1,1 range...
+        us_norm.vmax = 5          
+    us_col = us_cmap(us_norm(us_values))
+
 
     display_rgb = (data_col * data_alpha[...,np.newaxis]) + \
-        (curv_col * (1-data_alpha[...,np.newaxis]))
+        (us_col * (1-data_alpha[...,np.newaxis]))
     # Save the mesh files first as .asc, then .srf, then .obj
     # Then save them as .ply files, with the display rgb data for each voxel
     ply_file_2open = []
     for ih in ['lh.', 'rh.']:
-        under_surf_file = opj(path_to_sub_surf, f'{ih}{under_surf}')
+        mesh_name_file = opj(path_to_sub_surf, f'{ih}{mesh_name}')
         asc_surf_file = opj(out_dir,f'{ih}{surf_name}.asc')
         srf_surf_file = opj(out_dir,f'{ih}{surf_name}.srf')
         # obj_surf_file = opj(out_dir,f'{ih}{surf_name}.obj')
         ply_surf_file = opj(out_dir,f'{ih}{surf_name}.ply')
         ply_file_2open.append(ply_surf_file)
         # [1] Make asc file using freesurfer mris_convert command:
-        os.system(f'mris_convert {under_surf_file} {asc_surf_file}')
+        os.system(f'mris_convert {mesh_name_file} {asc_surf_file}')
         # [2] Rename .asc as .srf file to avoid ambiguity (using "brainders" conversion tool)
         os.system(f'cp {asc_surf_file} {srf_surf_file}')
         # [3] Use brainder script to create .obj file        
@@ -238,59 +244,60 @@ def fs_to_ply(sub, data, fs_dir, under_surf='inflated', out_dir=None, **kwargs):
         
     # Now use meshlab and "import mesh" to view the surfaces
     if open_mlab:
+        # mlab_cmd = f'{mesh_lab_init} {ply_file_2open[0]} {ply_file_2open[1]}'
         mlab_cmd = f'{mesh_lab_init} {ply_file_2open[0]} {ply_file_2open[1]}'
         os.system(mlab_cmd)
 
 
 
-def obj_to_ply(obj_file, rgb_vals):
-    with open(obj_file) as f:
-        obj_lines = f.readlines()
-    with open(obj_file) as f:    
-        obj_str = f.read()
-    n_vx = obj_str.count('v') # Number of vertices
-    n_f = obj_str.count('f')  # Number of faces 
-    # Create the ply string -> following this format
-    ply_str  = f'ply\n'
-    ply_str += f'format ascii 1.0\n'
-    ply_str += f'element vertex {n_vx}\n'
-    ply_str += f'property float x\n'
-    ply_str += f'property float y\n'
-    ply_str += f'property float z\n'
-    ply_str += f'property uchar red\n'
-    ply_str += f'property uchar green\n'
-    ply_str += f'property uchar blue\n'
-    ply_str += f'element face {n_f}\n'
-    ply_str += f'property list uchar int vertex_index\n'
-    ply_str += f'end_header\n'
+# def obj_to_ply(obj_file, rgb_vals):
+#     with open(obj_file) as f:
+#         obj_lines = f.readlines()
+#     with open(obj_file) as f:    
+#         obj_str = f.read()
+#     n_vx = obj_str.count('v') # Number of vertices
+#     n_f = obj_str.count('f')  # Number of faces 
+#     # Create the ply string -> following this format
+#     ply_str  = f'ply\n'
+#     ply_str += f'format ascii 1.0\n'
+#     ply_str += f'element vertex {n_vx}\n'
+#     ply_str += f'property float x\n'
+#     ply_str += f'property float y\n'
+#     ply_str += f'property float z\n'
+#     ply_str += f'property uchar red\n'
+#     ply_str += f'property uchar green\n'
+#     ply_str += f'property uchar blue\n'
+#     ply_str += f'element face {n_f}\n'
+#     ply_str += f'property list uchar int vertex_index\n'
+#     ply_str += f'end_header\n'
 
 
-    # Cycle through the lines of the obj file and add vx + coords + rgb
-    v_idx = 0 # Keep count of vertices     
-    for i in range(len(obj_lines)):
-        if obj_lines[i][0]=='v':
-            split_coord = obj_lines[i][2:-1].split(' ')
-            # for some reason in .ply files the first coordinates valence is flipped (-1 to 1) 
-            # also the order is 0,2,1 from obj...
-            ply_str += f'{float(split_coord[0]*-1):.6f} '  # *-1
-            ply_str += f'{float(split_coord[2]):.6f} '
-            ply_str += f'{float(split_coord[1]):.6f} '
-            # Now add the rgb values. as integers between 0 and 255
-            ply_str += f' {int(rgb_vals[v_idx][0]*255)} {int(rgb_vals[v_idx][1]*255)} {int(rgb_vals[v_idx][2]*255)}\n'
+#     # Cycle through the lines of the obj file and add vx + coords + rgb
+#     v_idx = 0 # Keep count of vertices     
+#     for i in range(len(obj_lines)):
+#         if obj_lines[i][0]=='v':
+#             split_coord = obj_lines[i][2:-1].split(' ')
+#             # for some reason in .ply files the first coordinates valence is flipped (-1 to 1) 
+#             # also the order is 0,2,1 from obj...
+#             ply_str += f'{float(split_coord[0]*-1):.6f} '  # *-1
+#             ply_str += f'{float(split_coord[2]):.6f} '
+#             ply_str += f'{float(split_coord[1]):.6f} '
+#             # Now add the rgb values. as integers between 0 and 255
+#             ply_str += f' {int(rgb_vals[v_idx][0]*255)} {int(rgb_vals[v_idx][1]*255)} {int(rgb_vals[v_idx][2]*255)}\n'
             
-            v_idx += 1 # next vertex
+#             v_idx += 1 # next vertex
         
-        elif obj_lines[i][0]=='f':
-            # After we finished all the vertices, we need to define the faces
-            # -> these are triangles (hence 3 at the beginning of each line)
-            # -> the index of the three vx is given
-            # For some reason the index is 1 less in .ply files vs .obj files
-            # ... i guess like the difference between matlab and python
-            ply_str += '3 ' 
-            split_idx = obj_lines[i][2::].split(' ')
-            ply_str += f'{int(split_idx[0])-1} '
-            ply_str += f'{int(split_idx[1])-1} '
-            ply_str += f'{int(split_idx[2])-1} '
-            ply_str += '\n'
-    return ply_str
+#         elif obj_lines[i][0]=='f':
+#             # After we finished all the vertices, we need to define the faces
+#             # -> these are triangles (hence 3 at the beginning of each line)
+#             # -> the index of the three vx is given
+#             # For some reason the index is 1 less in .ply files vs .obj files
+#             # ... i guess like the difference between matlab and python
+#             ply_str += '3 ' 
+#             split_idx = obj_lines[i][2::].split(' ')
+#             ply_str += f'{int(split_idx[0])-1} '
+#             ply_str += f'{int(split_idx[1])-1} '
+#             ply_str += f'{int(split_idx[2])-1} '
+#             ply_str += '\n'
+#     return ply_str
 

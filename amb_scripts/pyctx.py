@@ -1,7 +1,7 @@
 
 import numpy as np
 import cortex 
-
+import os
 
 def pycortex_alpha_plotting(sub, data, data_weight, **kwargs):
     
@@ -35,7 +35,7 @@ def pycortex_alpha_plotting(sub, data, data_weight, **kwargs):
     cmap            = kwargs.get('cmap', 'Retinotopy_RYBCR')
     bool_mask       = kwargs.get('bool_mask', True)
     scale_data_w    = kwargs.get('scale_data_w', False)
-
+    print(os.environ['CTX'])
     # [1] Set up the mask / weighting for the data    
     if scale_data_w: 
         # Rescale data weights to be b/w 0 and 1
@@ -66,7 +66,7 @@ def pycortex_alpha_plotting(sub, data, data_weight, **kwargs):
     curv.vmax = 1
     curv.cmap = 'gray' # we want it to be grey underneath
 
-
+    
     # [3] Create the data colormap
     # Create vx mask from data
     vx = cortex.Vertex(data, sub, vmin=vmin, vmax=vmax, cmap=cmap)

@@ -14,6 +14,8 @@ from .plot_functions import *
 from .pyctx import *
 from prfpy.rf import csf_exponential
 
+from dag_prf_utils.plot_functions import *
+
 def grate_texture(sf=1, con=1, n_pix=200):
     n_deg = 5
     x_grid,y_grid = np.meshgrid(np.linspace(-n_deg,n_deg,n_pix),np.linspace(-n_deg,n_deg,n_pix))
@@ -982,43 +984,13 @@ class AmbPlotter(Csf2EGetter):
         dot_vmax = kwargs.get("dot_vmax", None)
         # *** *** *** *** *** *** *** *** *** *** ***         
         # X,Y positions from specified task (ub=unbinned)
-        ub_X, ub_Y, ub_ecc, ub_pol  = self.return_th_param(
-            model=model, eye=eye, param=['x', 'y', 'ecc', 'pol'], vx_mask=vx_mask)
-        if not do_binning: # Assign plotting values
-            X2plot,Y2plot = ub_X, ub_Y
-            C2plot = dot_col
-            S2plot = dot_size
-            alpha2plot = dot_alpha
-        else:
-            X2plot, Y2plot, C2plot = self._return_ecc_pol_bin(
-                params2bin=[ub_X, ub_Y, dot_col],
-                ecc4bin=ub_ecc, pol4bin=ub_pol, 
-                ecc_bounds=ecc_bounds, pol_bounds=pol_bounds,bin_weight=None)
-            if isinstance(dot_size, np.ndarray):
-                S2plot = self._return_ecc_pol_bin(
-                    params2bin=[dot_size],ecc4bin=ub_ecc, pol4bin=ub_pol, 
-                    ecc_bounds=ecc_bounds, pol_bounds=pol_bounds,bin_weight=None)[0]
-            else:
-                S2plot = dot_size
-            if isinstance(dot_alpha, np.ndarray):
-                alpha2plot = self._return_ecc_pol_bin(
-                    params2bin=[dot_alpha],ecc4bin=ub_ecc, pol4bin=ub_pol, 
-                    ecc_bounds=ecc_bounds, pol_bounds=pol_bounds,bin_weight=None)[0]
-            else:
-                alpha2plot = dot_alpha
-
-        scat_col = axs.scatter(
-            X2plot, Y2plot, 
-            c=C2plot, s=S2plot, alpha=alpha2plot, 
-            vmin=dot_vmin, vmax=dot_vmax, cmap=dot_cmap)
-        fig = plt.gcf()
-        cb = fig.colorbar(scat_col, ax=axs)        
-        if not isinstance(kwargs['dot_col'], np.ndarray): 
-            cb.set_label(kwargs['dot_col'])
-        self._add_bin_lines(axs, **kwargs)
-        if do_patch:        
-            self._add_patches(axs, patch_col=patch_col)
-        self._add_axs_basics(axs, **kwargs)    
+        dot_x,dot_y = self.return_th_param(
+            model=model, eye=eye, param=['x', 'y'], vx_mask=vx_mask)
+        
+        dag_visual_field_scatter(
+            axs, dot_x, dot_y,
+            patch_col=self.plot_cols[eye], dot_col=dot_col, dot_vmin=dot_vmin, dot_vmax=dot_vmax, 
+            dot_cmap=dot_cmap, dot_alpha=dot_alpha, dot_size=dot_size, )
 
     def scatter_generic(self, axs, vx_mask, x_param, y_param, **kwargs):
         '''
@@ -1289,99 +1261,42 @@ class AmbPlotter(Csf2EGetter):
     # ASSISTING FUNCTIONS 
     def _show_ctx(self,ctx_dict):
         cortex.webgl.show(ctx_dict)
-    def _add_bin_lines(self, axs, **kwargs):
-        ecc_bounds = kwargs.get("ecc_bounds", self.ecc_bounds)
-        pol_bounds = kwargs.get("pol_bounds", self.pol_bounds)        
-        incl_ticks = kwargs.get("incl_ticks", False)
-        # **** ADD THE LINES ****
-        if not incl_ticks:
-            axs.set_xticks([])    
-            axs.set_yticks([])
-        else:
-            axs.set_xticks(ecc_bounds, rotation = 90)
-            axs.set_xticklabels([f"{ecc_bounds[i]:.2f}\N{DEGREE SIGN}" for i in range(len(ecc_bounds))], rotation=90)
-            axs.set_yticks([])
-        axs.spines['right'].set_visible(False)
-        axs.spines['left'].set_visible(False)
-        axs.spines['top'].set_visible(False)
-        axs.spines['bottom'].set_visible(False)        
 
-        n_polar_lines = len(pol_bounds)
+    # def _plot_bin_line(self,X,Y,bin_using,axs, **kwargs):
+    #     # GET PARAMETERS....
+    #     line_col = kwargs.get("line_col", "k")    
+    #     line_label = kwargs.get("line_label", "_")
+    #     lw= kwargs.get("lw", 5)
+    #     n_bins = kwargs.get("n_bins", 10)    
+    #     xerr = kwargs.get("xerr", False)
+    #     # Do the binning
+    #     X_mean = binned_statistic(bin_using, X, bins=n_bins, statistic='mean')[0]
+    #     X_std = binned_statistic(bin_using, X, bins=n_bins, statistic='std')[0]
+    #     count = binned_statistic(bin_using, X, bins=n_bins, statistic='count')[0]
+    #     Y_mean = binned_statistic(bin_using, Y, bins=n_bins, statistic='mean')[0]                
+    #     Y_std = binned_statistic(bin_using, Y, bins=n_bins, statistic='std')[0]  #/ np.sqrt(bin_data['bin_X']['count'])              
+    #     if xerr:
+    #         axs.errorbar(
+    #             X_mean,
+    #             Y_mean,
+    #             yerr=Y_std,
+    #             xerr=X_std,
+    #             color=line_col,
+    #             label=line_label, 
+    #             lw=lw,
+    #             )
+    #     else:
+    #         axs.errorbar(
+    #             X_mean,
+    #             Y_mean,
+    #             yerr=Y_std,
+    #             xerr=X_std,
+    #             color=line_col,
+    #             label=line_label,
+    #             lw=lw,
+    #             )        
+    #     axs.legend()
 
-        for i_pol in range(n_polar_lines):
-            i_pol_val = pol_bounds[i_pol]
-            outer_x = np.cos(i_pol_val)*ecc_bounds[-1]
-            outer_y = np.sin(i_pol_val)*ecc_bounds[-1]
-            outer_x_txt = outer_x*1.1
-            outer_y_txt = outer_y*1.1        
-            outer_txt = f"{180*i_pol_val/np.pi:.0f}\N{DEGREE SIGN}"
-            # Don't show 360, as this goes over the top of 0 degrees and is ugly...
-            if not '360' in outer_txt:
-                axs.plot((0, outer_x), (0, outer_y), color="k", alpha=0.3)
-                if incl_ticks:
-                    axs.text(outer_x_txt, outer_y_txt, outer_txt, ha='center', va='center')
-
-        for i_ecc, i_ecc_val in enumerate(ecc_bounds):
-            grid_line = patches.Circle((0, 0), i_ecc_val, color="k", alpha=0.3, fill=0)    
-            axs.add_patch(grid_line)                    
-        ratio = 1.0
-        x_left, x_right = axs.get_xlim()
-        y_low, y_high = axs.get_ylim()
-        axs.set_aspect(abs((x_right-x_left)/(y_low-y_high))*ratio)    
-
-    def _add_patches(self, axs, **kwargs):
-        patch_col = kwargs.get("patch_col", 'k')
-        aperture_line = patches.Circle((0, 0), self.aperture_rad, color=patch_col, linewidth=8, alpha=0.5, fill=0)    
-        axs.add_patch(aperture_line)        
-    
-    def _plot_bin_line(self,X,Y,bin_using,axs, **kwargs):
-        # GET PARAMETERS....
-        line_col = kwargs.get("line_col", "k")    
-        line_label = kwargs.get("line_label", "_")
-        lw= kwargs.get("lw", 5)
-        n_bins = kwargs.get("n_bins", 10)    
-        xerr = kwargs.get("xerr", False)
-        # Do the binning
-        X_mean = binned_statistic(bin_using, X, bins=n_bins, statistic='mean')[0]
-        X_std = binned_statistic(bin_using, X, bins=n_bins, statistic='std')[0]
-        count = binned_statistic(bin_using, X, bins=n_bins, statistic='count')[0]
-        Y_mean = binned_statistic(bin_using, Y, bins=n_bins, statistic='mean')[0]                
-        Y_std = binned_statistic(bin_using, Y, bins=n_bins, statistic='std')[0]  #/ np.sqrt(bin_data['bin_X']['count'])              
-        if xerr:
-            axs.errorbar(
-                X_mean,
-                Y_mean,
-                yerr=Y_std,
-                xerr=X_std,
-                color=line_col,
-                label=line_label, 
-                lw=lw,
-                )
-        else:
-            axs.errorbar(
-                X_mean,
-                Y_mean,
-                yerr=Y_std,
-                xerr=X_std,
-                color=line_col,
-                label=line_label,
-                lw=lw,
-                )        
-        axs.legend()
-
-    def _add_axs_basics(self, axs, **kwargs):        
-        xlabel = kwargs.get("xlabel", "")
-        ylabel = kwargs.get("ylabel", "")
-        title = kwargs.get("title", "")
-        x_lim = kwargs.get("x_lim", [])
-        y_lim = kwargs.get("y_lim", [])
-        axs.set_xlabel(xlabel)
-        axs.set_ylabel(ylabel)
-        axs.set_title(title)
-        if x_lim!=[]:
-            axs.set_xlim(x_lim)
-        if y_lim!=[]:
-            axs.set_ylim(y_lim)
 
     # ************************************
     # RETURN DOT FUNCTIONS
@@ -1486,48 +1401,3 @@ class AmbPlotter(Csf2EGetter):
             dot_size = ow_dot_size
         return dot_size
 
-
-    
-    def _return_ecc_pol_bin(self, params2bin, ecc4bin, pol4bin, ecc_bounds, pol_bounds, bin_weight=None):
-        '''
-        params2bin      list of np.ndarrays, to bin
-        ecc4bin         eccentricity & polar angle used in binning
-        pol4bin
-        ecc_bounds      how to split into bins 
-        pol_bounds
-        bin_weight      Something used to weight the binning (e.g., rsq)
-        Return the parameters binned by the specified ecc, and pol bounds 
-
-        '''
-        if not isinstance(params2bin, list):
-            params2bin = [params2bin]
-        
-        total_n_bins = (len(ecc_bounds)-1) * (len(pol_bounds)-1)
-        params_binned = []
-        for i_param in range(len(params2bin)):
-
-            bin_mean = np.zeros((len(ecc_bounds)-1, len(pol_bounds)-1))
-            bin_idx = []
-            for i_ecc in range(len(ecc_bounds)-1):
-                for i_pol in range(len(pol_bounds)-1):
-                    ecc_lower = ecc_bounds[i_ecc]
-                    ecc_upper = ecc_bounds[i_ecc + 1]
-
-                    pol_lower = pol_bounds[i_pol]
-                    pol_upper = pol_bounds[i_pol + 1]            
-
-                    ecc_idx =(ecc4bin >= ecc_lower) & (ecc4bin <=ecc_upper)
-                    pol_idx =(pol4bin >= pol_lower) & (pol4bin <=pol_upper)        
-                    bin_idx = pol_idx & ecc_idx
-
-                    if bin_weight is not None:
-                        bin_mean[i_ecc, i_pol] = (params2bin[i_param][bin_idx] * bin_weight[bin_idx]).sum() / bin_weight[bin_idx].sum()
-                    else:
-                        bin_mean[i_ecc, i_pol] = np.mean(params2bin[i_param][bin_idx])
-
-            bin_mean = np.reshape(bin_mean, total_n_bins)
-            # REMOVE ANY NANS
-            bin_mean = bin_mean[~np.isnan(bin_mean)]
-            params_binned.append(bin_mean)
-
-        return params_binned
