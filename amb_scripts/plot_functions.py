@@ -7,7 +7,7 @@ import matplotlib as mpl
 from matplotlib import patches
 import linescanning.plotting as lsplt
 from scipy.stats import binned_statistic
-from highlight_text import HighlightText, ax_text, fig_text
+# from highlight_text import HighlightText, ax_text, fig_text
 from .utils import coord_convert, print_p
 # import rgba
 # import os 

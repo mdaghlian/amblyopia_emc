@@ -965,11 +965,10 @@ class AmbPlotter(Csf2EGetter):
         if th_dict:
             vx_mask = self.return_vx_mask(th_dict)
 
-        do_binning = kwargs.get("do_binning", False)
-        patch_col = kwargs.get("patch_col", self.plot_cols[eye])
-        ecc_bounds = kwargs.get("ecc_bounds", self.ecc_bounds)
-        pol_bounds = kwargs.get("pol_bounds", self.pol_bounds)
-        do_patch = kwargs.get("do_patch", True)
+        # do_binning = kwargs.get("do_binning", False)
+        # ecc_bounds = kwargs.get("ecc_bounds", self.ecc_bounds)
+        # pol_bounds = kwargs.get("pol_bounds", self.pol_bounds)
+        # do_patch = kwargs.get("do_patch", True)
         # *** Get dot alpha, dot_size  & dot_col***         
         dot_alpha = self._return_dot_alpha(**kwargs)
         if isinstance(dot_alpha, np.ndarray):
@@ -1048,7 +1047,7 @@ class AmbPlotter(Csf2EGetter):
             if not isinstance(kwargs['dot_col'], np.ndarray): 
                 cb.set_label(kwargs['dot_col'])
         if do_line:
-            self._plot_bin_line(X2plot, Y2plot, X2plot, axs=axs, line_label=f'{y_eye}-{y_id}: corr={XY_corr:.3f}', **kwargs)
+            dag_plot_bin_line(axs=axs, X=X2plot, Y=Y2plot, bin_using=X2plot, line_label=f'{y_eye}-{y_id}: corr={XY_corr:.3f}', **kwargs)
             # self._plot_bin_line(X2plot, Y2plot, Y2plot, axs=axs, **kwargs)
         if do_equal:
             axmin = np.min([X2plot.min(),Y2plot.min()])
@@ -1062,7 +1061,8 @@ class AmbPlotter(Csf2EGetter):
 
         axs.set_xlabel(x_param)
         axs.set_ylabel(y_param)
-        self._add_axs_basics(axs,xlabel=x_param, ylabel=y_param, title=f'{self.sub}, corr: {XY_corr:.3f}', **kwargs)    
+        kwargs['title'] = f'{self.sub}, corr: {XY_corr:.3f}'
+        dag_add_axs_basics(axs,xlabel=x_param, ylabel=y_param, **kwargs)    
 
     def hist_generic(self, axs, vx_mask, param, **kwargs):
         '''
@@ -1087,7 +1087,7 @@ class AmbPlotter(Csf2EGetter):
         
         axs.hist(param2plot, bins=bins, color=self.plot_cols[p_eye],alpha=alpha,label=param)
         axs.legend()
-        self._add_axs_basics(axs, **kwargs)    
+        dag_add_axs_basics(axs, **kwargs)    
 
     def ecc_2eye(self, axs, vx_mask, param, **kwargs):
         '''

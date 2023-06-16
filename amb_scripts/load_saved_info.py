@@ -7,15 +7,16 @@ import pickle
 opj = os.path.join
 
 import nibabel as nb
-from prfpy.stimulus import PRFStimulus2D, CSFStimulus
+from prfpy.stimulus import PRFStimulus2D, CSenFStimulus
 
-import linescanning.utils as lsutils
+# import linescanning.utils as lsutils
 import pandas as pd
-from .utils import print_p
+# from .utils import print_p
 # from collections import defaultdict as dd
 # import cortex
 
-from .utils import hyphen_parse, coord_convert
+# from .utils import hyphen_parse, coord_convert
+from dag_prf_utils.utils import *
 
 source_data_dir = '/data1/projects/dumoulinlab/Lab_members/Marcus/projects/amblyopia_emc/sourcedata'#os.getenv("DIR_DATA_SOURCE")
 derivatives_dir = '/data1/projects/dumoulinlab/Lab_members/Marcus/projects/amblyopia_emc/derivatives'#os.getenv("DIR_DATA_DERIV")
@@ -23,126 +24,11 @@ freesurfer_dir = opj(derivatives_dir, 'freesurfer')
 default_prf_dir = opj(derivatives_dir, 'prf')
 dm_dir = opj(os.path.dirname(os.path.realpath(__file__)), 'dm_files' )
 psc_tc_dir = opj(derivatives_dir, 'psc_tc')
+qCSF_dir = opj(derivatives_dir, 'qCSF')
 
-# class PrfALLTM(object):
-#     def __init__(self,sub, eye_list=['LE', 'RE', 'Ed', 'Em'], model_list=['gauss', 'norm','CSF'], **kwargs):
-#         self.sub = sub
-#         self.eye_list = eye
-#         self.model = model
-class Prf1T1M(object):
-    '''
-    Used to hold parameters for 1 subject, 1 task & 1 model
-    & To return user specified masks 
-
-    __init__ will set up the useful information into 3 pandas data frames
-    >> including: all the parameters in the numpy arrays input model specific
-        gauss: "x", "y", "a_sigma", "a_val", "bold_baseline", "rsq"
-        norm : "x", "y", "a_sigma", "a_val", "bold_baseline", "c_val", "n_sigma", "b_val", "d_val", "rsq"
-    >> & eccentricit, polar angle, 
-        "ecc", "pol",
-    
-    Functions:
-    return_vx_mask: returns a mask for voxels, specified by the user
-    return_th_param: returns the specified parameters, masked
-    '''
-    def __init__(self,sub, eye, model, **kwargs):
-        '''
-        params_LE/X        np array, of all the parameters in the LE/X condition
-        model               str, model: e.g., gauss or norm
-        '''
-        self.sub = sub
-        self.eye = eye
-        self.model = model
-        if self.model in ['gauss', 'norm']:
-            self.task = f'pRF{eye}'
-        elif self.model == 'CSF':
-            self.task = f'CSF{eye}'
-        
-        self.n_vox = np.sum(amb_load_nverts(sub))
-        self.n_vox_L,self.n_vox_R = amb_load_nverts(sub)
-        self.roi_fit = kwargs.get('roi_fit', 'all')
-        self.fit_stage = kwargs.get('fit_stage', 'iter')
-
-        self.params_np = amb_load_prf_params(
-            sub=self.sub, task_list=self.task, model_list=self.model, roi_fit=self.roi_fit, fit_stage=self.fit_stage)[self.task][self.model]
-        
-        self.params_dd = {}
-        mod_labels = print_p()[model] 
-        for key in mod_labels.keys():                    
-            self.params_dd[key] = self.params_np[:,mod_labels[key]]
-        
-        # Calculate extra interesting stuff
-        if self.model in ['gauss', 'norm']:
-            # Ecc, pol
-            self.params_dd['ecc'], self.params_dd['pol'] = coord_convert(
-                self.params_dd['x'],self.params_dd['y'],'cart2pol')        
-        if self.model=='norm':
-            # -> size ratio:
-            self.params_dd['size_ratio'] = self.params_dd['n_sigma'] / self.params_dd['a_sigma']
-            self.params_dd['amp_ratio'] = self.params_dd['a_val'] / self.params_dd['c_val']
-            self.params_dd['bd_ratio'] = self.params_dd['b_val'] / self.params_dd['d_val']
-        if self.model=='CSF':
-            self.params_dd['log10_sf0'] = np.log10(self.params_dd['sf0'])
-            self.params_dd['log10_maxC'] = np.log10(self.params_dd['maxC'])
-            self.params_dd['sfmax'] = np.nan_to_num(
-                10**(np.sqrt(self.params_dd['log10_maxC']/(self.params_dd['width_r']**2)) + \
-                                            self.params_dd['log10_sf0']))            
-            self.params_dd['sfmax'][self.params_dd['sfmax']>100] = 100 # MAX VALUE
-            self.params_dd['log10_sfmax'] = np.log10(self.params_dd['sfmax'])
-
-        # Convert to PD           
-        self.pd_params = pd.DataFrame(self.params_dd)
-
-    def return_vx_mask(self, th={}):
-        '''
-        return_vx_mask: returns a mask (boolean array) for voxels, specified by the user
-        th keys must be split into 4 parts
-        'task-model-comparison-param' : value
-        e.g.: to exclude gauss fits with rsq less than 0.1
-        th = {'min-rsq': 0.1 } 
-        comparison  -> min, max
-        param       -> any of... (model dependent)
-            "x", "y", "ecc", "pol"
-            gauss: "a_sigma", "a_val", "bold_baseline", "rsq"
-            norm : "a_sigma", "a_val", "bold_baseline", "c_val", "n_sigma", "b_val", "d_val", "rsq"            
-            returns a boolean array, excluding all vx where rsq < 0.1 in LE condition
-        
-        '''        
-
-        # Start with EVRYTHING        
-        vx_mask = np.ones(self.n_vox, dtype=bool)
-        for th_key in th.keys():
-            th_key_str = str(th_key) # convert to string... 
-            comp, p = th_key_str.split('-')
-            th_val = th[th_key]
-            if comp=='min':
-                vx_mask &= self.pd_params[p].gt(th_val)
-            elif comp=='max':
-                vx_mask &= self.pd_params[p].lt(th_val)
-            elif comp=='bound':
-                vx_mask &= self.pd_params[p].gt(th_val[0])
-                vx_mask &= self.pd_params[p].lt(th_val[1])
-            else:
-                sys.exit()
-
-        return vx_mask.to_numpy()
-    
-    # def return_th_param(self, param, vx_mask=None):
-    #     '''
-    #     For a specified task (LE, RE, Ed)
-    #     return all the parameters listed, masked by vx_mask        
-    #     '''
-    #     if vx_mask is None:
-    #         vx_mask = np.ones(self.n_vox, dtype=bool)
-    #     if not isinstance(param, list):
-    #         param = [param]        
-    #     param_out = []
-    #     for i_param in param:
-    #         # this_task = i_param.split('-')[0]
-    #         # this_param = i_param.split('-')[1]
-    #         param_out.append(self.pd_params[task][i_param][vx_mask].to_numpy())
-
-    #     return param_out
+def get_yml_settings_path():
+    yml_path = '/data1/projects/dumoulinlab/Lab_members/Marcus/projects/amblyopia_emc/code/amb_code/amb_scripts/amb_fit_settings.yml'
+    return yml_path
 
 def amb_load_fit_settings(sub, task_list, model_list, **kwargs):
     fit_settings = amb_load_pkl_key(
@@ -180,9 +66,12 @@ def amb_load_pkl(sub, task, model, **kwargs):
     roi_fit specifies which fitting run was used.  
     '''    
     if 'pRF' in task:
-        amb_prf_dir = opj(derivatives_dir, 'amb-prf')
+        # amb_prf_dir = opj(derivatives_dir, 'amb-prf')
+        amb_prf_dir = opj(derivatives_dir, 'prf')
     else:
-        amb_prf_dir = opj(derivatives_dir, 'amb-csf')
+        # amb_prf_dir = opj(derivatives_dir, 'amb-csf')
+        amb_prf_dir = opj(derivatives_dir, 'csf')
+
 
     dir_to_search = opj(amb_prf_dir, sub, 'ses-1')
     include = kwargs.get("include", []) # any extra details to search for in file name
@@ -196,7 +85,7 @@ def amb_load_pkl(sub, task, model, **kwargs):
     include += [sub, model, task, roi_fit, fit_stage] # Make sure we get the correct model and task (& subject)    
     exclude += ['avg_bold', '.txt'] # exclude grid fits and bold time series
 
-    data_path = lsutils.get_file_from_substring(filt=include, path=dir_to_search, exclude=exclude)
+    data_path = dag_find_file_in_folder(filt=include, path=dir_to_search, exclude=exclude)
     if isinstance(data_path, list):
         print(f'Error, more than 1 match ({len(data_path)} files)')
         sys.exit()
@@ -213,7 +102,7 @@ def amb_load_real_tc(sub, task_list, clip_start=0):
     this_dir = opj(psc_tc_dir, sub, 'ses-1')
     real_tc = {}
     for task in task_list:
-        real_tc_file = lsutils.get_file_from_substring([task, 'hemi-LR_desc-avg_bold'], this_dir)
+        real_tc_file = dag_find_file_in_folder([task, 'hemi-LR_desc-avg_bold'], this_dir)
         if isinstance(real_tc_file, list):
             print(f'Error, more than 1 match ({len(real_tc_file)} files)')
             sys.exit()
@@ -232,7 +121,7 @@ def amb_load_real_tc_run(sub, task_list, run_list):
     for task in task_list:
         real_tc[task] = []
         for run in run_list:
-            LH_real_tc_file = lsutils.get_file_from_substring(
+            LH_real_tc_file = dag_find_file_in_folder(
                 [task, f'run-{run}', 'fsnative', 'hemi-R_desc-denoised_bold'], unz_dir)
             LH_tc = np.load(LH_real_tc_file)
             RH_real_tc_file = lsutils.get_file_from_substring(
@@ -251,7 +140,8 @@ def amb_load_dm(dm_types):
     dm = {}
     for dm_type in dm_types:
         if not dm_type in ['sf_vect', 'c_vect', 'prf', 'csf']:
-            print('ERROR')
+            print(f'Could not find dm type {dm_type}')        
+            print(f'Must be - sf_vect, c_vect, prf')
             sys.exit()
         if dm_type == 'sf_vect'        :
             dm[dm_type] = np.squeeze(scipy.io.loadmat(opj(dm_dir, 'sf_vect.mat'))['sf_vect'])
@@ -260,9 +150,6 @@ def amb_load_dm(dm_types):
         elif dm_type == 'prf':
             dm[dm_type] = np.load(opj(dm_dir, 'prf_design_matrix.npy'))
 
-        else:
-            print('error')        
-            sys.exit()
     return dm
 
 def amb_load_prfpy_stim(dm_type='pRF', clip_start=0):
@@ -289,7 +176,7 @@ def amb_load_prfpy_stim(dm_type='pRF', clip_start=0):
         u_sfs = u_sfs[u_sfs>0]
         u_con = np.sort(list(set(c_vect)))
         u_con = u_con[u_con>0]
-        prfpy_stim = CSFStimulus(
+        prfpy_stim = CSenFStimulus(
             SFs = u_sfs,#,
             CONs = u_con,
             SF_seq=sf_vect,
@@ -299,7 +186,38 @@ def amb_load_prfpy_stim(dm_type='pRF', clip_start=0):
 
 
     return prfpy_stim    
+def amb_load_qcsf(sub, eye_list, ses='ses-1'):
+    if not isinstance(eye_list, list):
+        eye_list = [eye_list]
+    this_dir = opj(qCSF_dir, sub, ses)
+    qCSF_info = {}
+    for eye in eye_list:        
+        qCSF_file = dag_find_file_in_folder([f'eye-{eye}', 'struct', '.mat'], this_dir)
+        if isinstance(qCSF_file, list):
+            print(f'Error, more than 1 match ({len(qCSF_file)} files)')
+            sys.exit()
+        mat_struct = scipy.io.loadmat(qCSF_file).get('qCSF_struct')
+        qCSF_info[eye] = mat_struct_to_python_dict(mat_struct)
+    
+    
+    return qCSF_info
 
+def mat_struct_to_python_dict(mat_struct):
+    # mat_struct = scipy.io.loadmat(file/path).get('entry_of_interest')
+    recordarr = np.rec.array(mat_struct)
+    py_dict = {}
+    myList = []
+    for field in recordarr.dtype.names: #iterates through field names of numpy array
+        for array in recordarr[field]: #iterates through the array of each numpy array                                    
+            for value in array:
+                myList.append(np.squeeze(value.flatten()))
+                #print(np.squeeze(value.flatten()[0]))
+        
+        # print(np.array(myList).shape)
+        py_dict[field] = np.squeeze(np.array(myList))
+        myList = []
+
+    return py_dict
 def amb_load_nverts(sub):
     n_verts = []
     for i in ['lh', 'rh']:
@@ -308,7 +226,7 @@ def amb_load_nverts(sub):
         n_verts.append(verts)
     return n_verts
 
-def amb_load_roi(sub, roi):
+def amb_load_roi(sub, label, **kwargs):
     '''
     Return a boolean array of voxels included in the specified roi
     array is vector with each entry corresponding to a point on the subjects cortical surface
@@ -319,49 +237,9 @@ def amb_load_roi(sub, roi):
 
     TODO - conjunctive statements (not)
     '''
-    # If *ALL* voxels to be included
-    if roi=='all':
-        total_num_vx = np.sum(amb_load_nverts(sub))
+    roi_idx = dag_load_roi(sub=sub, roi=label, fs_dir=opj(derivatives_dir, 'freesurfer'), **kwargs)
 
-        roi_idx = np.ones(total_num_vx, dtype=bool)
-        return roi_idx    
-    # Else look for rois in subs freesurfer label folder
-    roi_dir = opj(derivatives_dir, 'freesurfer', sub, 'label')
-    if not isinstance(roi, list): # roi can be a list 
-        roi = [roi]    
-    
-    roi_idx = []
-    for this_roi in roi:    
-        # Find the corresponding files
-        if 'not' in this_roi:
-            do_not = True
-            this_roi = this_roi.split('-')[-1]
-        else:
-            do_not = False
-        roi_file = {}
-        roi_file['L'] = lsutils.get_file_from_substring([this_roi, '.thresh', '.label', 'lh'], roi_dir)    
-        roi_file['R'] = lsutils.get_file_from_substring([this_roi, '.thresh', '.label', 'rh'], roi_dir)    
-        n_verts = amb_load_nverts(sub)
-        LR_bool = []
-        for i,hemi in enumerate(['L', 'R']):
-            with open(roi_file[hemi]) as f:
-                contents = f.readlines()
-            
-            idx_str = [contents[i].split(' ')[0] for i in range(2,len(contents))]
-            idx_int = [int(idx_str[i]) for i in range(len(idx_str))]
-            this_bool = np.zeros(n_verts[i], dtype=bool)
-            this_bool[idx_int] = True
-            if do_not:
-                this_bool = ~this_bool
-
-            LR_bool.append(this_bool)
-        this_roi_mask = np.concatenate(LR_bool)
-        roi_idx.append(this_roi_mask)
-    
-    roi_idx = np.vstack(roi_idx)
-    roi_idx = roi_idx.any(0)
-
-    return roi_idx
+    return roi_idx    
 
 # def 
 
