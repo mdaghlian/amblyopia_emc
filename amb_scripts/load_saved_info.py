@@ -30,22 +30,22 @@ def get_yml_settings_path():
     yml_path = '/data1/projects/dumoulinlab/Lab_members/Marcus/projects/amblyopia_emc/code/amb_code/amb_scripts/amb_fit_settings.yml'
     return yml_path
 
-def amb_load_fit_settings(sub, task_list, model_list, **kwargs):
+def amb_load_fit_settings(sub, task_list, model_list, ses, **kwargs):
     fit_settings = amb_load_pkl_key(
-        sub=sub, task_list=task_list, model_list=model_list, key='settings', **kwargs)
+        sub=sub, task_list=task_list, model_list=model_list, ses=ses, key='settings', **kwargs)
     return fit_settings
 
-def amb_load_pred_tc(sub, task_list, model_list, **kwargs):
+def amb_load_pred_tc(sub, task_list, model_list, ses, **kwargs):
     pred_tc = amb_load_pkl_key(
-        sub=sub, task_list=task_list, model_list=model_list, key='predictions', **kwargs)
+        sub=sub, task_list=task_list, model_list=model_list, ses=ses, key='preds', **kwargs)
     return pred_tc
 
-def amb_load_prf_params(sub, task_list, model_list, **kwargs):
+def amb_load_prf_params(sub, task_list, model_list, ses, **kwargs):
     prf_params = amb_load_pkl_key(
-        sub=sub, task_list=task_list, model_list=model_list, key='pars', **kwargs)
+        sub=sub, task_list=task_list, model_list=model_list, ses=ses, key='pars', **kwargs)
     return prf_params
 
-def amb_load_pkl_key(sub, task_list, model_list, key, **kwargs):
+def amb_load_pkl_key(sub, task_list, model_list, ses, key, **kwargs):
     if not isinstance(task_list, list):
         task_list = [task_list]
     if not isinstance(model_list, list):
@@ -55,11 +55,11 @@ def amb_load_pkl_key(sub, task_list, model_list, key, **kwargs):
     for task in task_list:
         prf_dict[task] = {}
         for model in model_list:
-            this_pkl = amb_load_pkl(sub=sub, task=task, model=model, **kwargs)
+            this_pkl = amb_load_pkl(sub=sub, task=task, model=model, ses=ses, **kwargs)
             prf_dict[task][model] = this_pkl[key]
     return prf_dict
 
-def amb_load_pkl(sub, task, model, **kwargs):
+def amb_load_pkl(sub, task, model, ses, **kwargs):
     '''
     linescanning toolbox nicely saves everything into a pickle
     this will load the correct pickle associated with the correct, sub, ses, model and task
@@ -73,21 +73,23 @@ def amb_load_pkl(sub, task, model, **kwargs):
         amb_prf_dir = opj(derivatives_dir, 'csf')
 
 
-    dir_to_search = opj(amb_prf_dir, sub, 'ses-1')
+    dir_to_search = opj(amb_prf_dir, sub, ses)
     include = kwargs.get("include", []) # any extra details to search for in file name
     exclude = kwargs.get("exclude", []) # any extra details to search for in file name
     roi_fit = kwargs.get('roi_fit', 'all')    
     fit_stage = kwargs.get('fit_stage', 'iter')
-
+    fit_type = kwargs.get('fit_type', 'bgfs')
     # the folder specified in "dir_to_search" will contain several files
     # -> different fit types (grid vs iter), model (gauss vs norm) task (As0,AS1,AS2) and 
     # Now we need to find the relevant file, by filtering for key terms (see included)
-    include += [sub, model, task, roi_fit, fit_stage] # Make sure we get the correct model and task (& subject)    
+    include += [sub, model, task, roi_fit, fit_stage, fit_type] # Make sure we get the correct model and task (& subject)    
     exclude += ['avg_bold', '.txt'] # exclude grid fits and bold time series
 
     data_path = dag_find_file_in_folder(filt=include, path=dir_to_search, exclude=exclude)
     if isinstance(data_path, list):
+        print(include)
         print(f'Error, more than 1 match ({len(data_path)} files)')
+        print(data_path)
         sys.exit()
 
     pkl_file = open(data_path,'rb')
@@ -96,10 +98,10 @@ def amb_load_pkl(sub, task, model, **kwargs):
 
     return data    
 
-def amb_load_real_tc(sub, task_list, clip_start=0):
+def amb_load_real_tc(sub, task_list, ses, clip_start=0):
     if not isinstance(task_list, list):
         task_list = [task_list]
-    this_dir = opj(psc_tc_dir, sub, 'ses-1')
+    this_dir = opj(psc_tc_dir, sub, ses)
     real_tc = {}
     for task in task_list:
         real_tc_file = dag_find_file_in_folder([task, 'hemi-LR_desc-avg_bold'], this_dir)
@@ -111,12 +113,12 @@ def amb_load_real_tc(sub, task_list, clip_start=0):
 
     return real_tc
 
-def amb_load_real_tc_run(sub, task_list, run_list):
+def amb_load_real_tc_run(sub, task_list, run_list, ses):
     if not isinstance(task_list, list):
         task_list = [task_list]
     if not isinstance(run_list, list):
         run_list=[run_list]
-    unz_dir = opj(derivatives_dir, 'pybest', sub, 'ses-1', 'unzscored')
+    unz_dir = opj(derivatives_dir, 'pybest', sub, ses, 'unzscored')
     real_tc = {}
     for task in task_list:
         real_tc[task] = []
@@ -124,7 +126,7 @@ def amb_load_real_tc_run(sub, task_list, run_list):
             LH_real_tc_file = dag_find_file_in_folder(
                 [task, f'run-{run}', 'fsnative', 'hemi-R_desc-denoised_bold'], unz_dir)
             LH_tc = np.load(LH_real_tc_file)
-            RH_real_tc_file = lsutils.get_file_from_substring(
+            RH_real_tc_file = dag_find_file_in_folder(
                 [task, f'run-{run}', 'fsnative', 'hemi-R_desc-denoised_bold'], unz_dir)
             RH_tc = np.load(RH_real_tc_file)
             real_tc[task].append(np.concatenate([LH_tc, RH_tc], axis=1).T)
@@ -153,7 +155,8 @@ def amb_load_dm(dm_types):
     return dm
 
 def amb_load_prfpy_stim(dm_type='pRF', clip_start=0):
-    if dm_type=='pRF':
+    dm_type = dm_type.lower()
+    if dm_type=='prf':
         screen_info_path = opj(dm_dir, 'screen_info.yml')
         with open(screen_info_path) as f:
             screen_info = yaml.safe_load(f)
@@ -166,7 +169,7 @@ def amb_load_prfpy_stim(dm_type='pRF', clip_start=0):
             axis=0,
             TR=screen_info['TR']
             )
-    elif dm_type=='CSF':
+    elif dm_type=='csf':
         csf_dm = amb_load_dm(['sf_vect', 'c_vect'])
         sf_vect = csf_dm['sf_vect'][clip_start::]
         c_vect = csf_dm['c_vect'][clip_start::]
@@ -186,7 +189,8 @@ def amb_load_prfpy_stim(dm_type='pRF', clip_start=0):
 
 
     return prfpy_stim    
-def amb_load_qcsf(sub, eye_list, ses='ses-1'):
+
+def amb_load_qcsf(sub, eye_list, ses):
     if not isinstance(eye_list, list):
         eye_list = [eye_list]
     this_dir = opj(qCSF_dir, sub, ses)
@@ -218,6 +222,7 @@ def mat_struct_to_python_dict(mat_struct):
         myList = []
 
     return py_dict
+
 def amb_load_nverts(sub):
     n_verts = []
     for i in ['lh', 'rh']:

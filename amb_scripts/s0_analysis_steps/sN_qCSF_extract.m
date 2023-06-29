@@ -13,7 +13,7 @@ amb_code_dir = '/data1/projects/dumoulinlab/Lab_members/Marcus/projects/amblyopi
 qcsf_dir = '/data1/projects/dumoulinlab/Lab_members/Marcus/projects/amblyopia_emc/derivatives/qCSF/';
 
 sub_list = {'sub-01', 'sub-02'};
-ses_list = {'ses-1'};
+ses_list = {'ses-1', 'ses-2'};
 
 for i_sub=1:numel(sub_list)
 for i_ses=1:numel(ses_list)
@@ -46,7 +46,9 @@ for i_file = 1:length(file_list)
     % Save the data of interest as a struct:
     qCSF_struct = struct( ...
         'SF_list', [],...       % 12 SFs,
-        'history', [], ...      % trial num, SF, contrast, correct
+        'SF_history', [], ...   % trial num, SF, contrast, correct
+        'CON_history', [], ...   % trial num, SF, contrast, correct
+        'CORRECT_history', [], ...   % trial num, SF, contrast, correct
         'params', [],...        % 4 x CSF params 
         'peakCS', [],...        % 4 x CSF params, 1
         'peakSF', [],...        % 4 x CSF params, 2
@@ -57,7 +59,9 @@ for i_file = 1:length(file_list)
         
     % 
     qCSF_struct.SF_list = qCSF_SF_list;
-    qCSF_struct.history = QCSF_data.qcsf.data.history;
+    qCSF_struct.SF_history = QCSF_data.qcsf.data.history(:,2);
+    qCSF_struct.CON_history = QCSF_data.qcsf.data.history(:,3);
+    qCSF_struct.CORRECT_history = QCSF_data.qcsf.data.history(:,4);
     qCSF_struct.params = QCSF_data.qcsf.data.estCSF(end,:);
     qCSF_struct.peakCS = QCSF_data.qcsf.data.estCSF(end,1);
     qCSF_struct.peakSF = QCSF_data.qcsf.data.estCSF(end,2);

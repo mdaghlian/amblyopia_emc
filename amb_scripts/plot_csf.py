@@ -9,10 +9,10 @@ import pandas as pd
 from scipy.stats import binned_statistic
 import cortex
 from .load_saved_info import *
-from .utils import coord_convert, print_p, rescale_bw, hyphen_parse
+# from .utils import coord_convert, print_p, rescale_bw, hyphen_parse
 from .plot_functions import *
 from .pyctx import *
-from prfpy.rf import csf_exponential
+from prfpy.rf import csenf_exponential
 
 def grate_texture(sf=1, con=1, n_pix=200):
     n_deg = 5

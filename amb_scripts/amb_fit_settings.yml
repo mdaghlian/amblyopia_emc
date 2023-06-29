@@ -16,8 +16,8 @@ csf_bounds:
   maxC      : [0, 200]# NOW FOLLOWING CARLIEN [0,100]     # maxC
   width_l   : [0.448,0.448]# NOW FOLLOWING CARLIEN [0,5]   # width_l
   beta      : [0,1000]    # beta
-  baseline  : [-100,100]    # baseline
-csf_grid_nr: 5
+  baseline  : [-5,5]    # baseline
+csf_grid_nr: 20
 
 
 
@@ -33,7 +33,7 @@ normalize_RFs: False
 #DM size in pixels (n_pix x n_pix) (has to be divisor of 1080)
 n_pix: 100
 # set prf amplitude
-bold_bsl: [0,0]
+bold_bsl: [-5,5]
 prf_ampl: [0,1000]
 css_exponent: [0.01,3]
 
@@ -62,6 +62,6 @@ hrf:
   deriv_bound: [0,10]
   disp_bound: [0,0]
 
-grid_nr: 10 # 20 OG 
+grid_nr: 20 # 20 OG 
 rsq_threshold: 0.1
 TR: 1.5

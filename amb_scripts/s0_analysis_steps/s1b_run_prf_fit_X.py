@@ -65,24 +65,24 @@ Example:
     """
     print('\n\n')
     # ALWAYS
-    ses = 'ses-1'
-    fit_hrf = True
     verbose = True
     prf_out = 'prf'    
 
     # Specify
     sub = None
-    model = None
+    ses = None
     task = None
+    fit_hrf = False
+    model = None
     roi_fit = None
     constraints = None
     nr_jobs = None
 
 
     try:
-        opts = getopt.getopt(argv,"qp:s:t:m:r:d:c:",[
-            "help=", "sub=", "model=", "task=", "roi_fit=", "nr_jobs=",             
-            "tc", "bgfs"])[0]
+        opts = getopt.getopt(argv,"qp:s:t:n:m:r:d:c:",[
+            "help=", "sub=", "model=", "task=","ses=", "roi_fit=", "nr_jobs=",             
+            "tc", "bgfs", "hrf"])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
@@ -96,6 +96,8 @@ Example:
             sub = dag_hyphen_parse('sub', arg)
         elif opt in ("-t", "--task"):
             task = arg
+        elif opt in ("-n", "--ses"):
+            ses = dag_hyphen_parse('ses', arg)            
         elif opt in ("-m", "--model"):
             model = arg
         elif opt in ("-r", "--roi_fit"):
@@ -106,6 +108,8 @@ Example:
             constraints = "tc"
         elif opt in ("--bgfs"):
             constraints = "bgfs"
+        elif opt in ("--hrf"):
+            fit_hrf = True            
 
     if len(argv) < 1:
         print("NOT ENOUGH ARGUMENTS SPECIFIED")
@@ -179,11 +183,11 @@ Example:
         model=gg,                       # model (see above)
         n_jobs=prf_settings['nr_jobs'], # number of jobs to use in parallelization 
         )
-    iter_gauss = dag_find_file_in_folder([sub, 'gauss', roi_fit, 'iter', task, constraints], outputdir, return_msg=None)        
+    iter_gauss = dag_find_file_in_folder([sub, 'gauss', roi_fit, 'iter', task, constraints], outputdir)#, return_msg=None)        
     if iter_gauss is None:
         # -> gauss is faster than the extended, so we may have the 'all' fit already...
         # -> check for this and use it if appropriate (make sure the correct constraints are applied)
-        iter_gauss = dag_find_file_in_folder([sub, 'gauss', 'all', 'iter', task, constraints], outputdir, return_msg=None)        
+        iter_gauss = dag_find_file_in_folder([sub, 'gauss', 'all', 'iter', task, constraints], outputdir, return_msg='Error')        
     iter_gauss_params = load_params_generic(iter_gauss)
     # Apply the same mask to the gaussian parameters
     if not zero_pad:
@@ -194,18 +198,24 @@ Example:
     # ************************************************************************
 
     # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< CREATE & RUN EXTENDED MODEL
+    if prf_settings['use_previous_gaussian_fitter_hrf']:
+        use_previous_gaussian_fitter_hrf = True
+    else:
+        use_previous_gaussian_fitter_hrf = True
+
+
     if model=='norm': # ******************************** NORM
         gg_ext = Norm_Iso2DGaussianModel(
             stimulus=prf_stim,                                  
             hrf=prf_settings['hrf']['pars'],                    
             normalize_RFs=prf_settings['normalize_RFs'],        
-            )
+            )        
         gf_ext = Norm_Iso2DGaussianFitter(
             data=m_prf_tc_data,           
             model=gg_ext,                  
             n_jobs=prf_settings['nr_jobs'],
             previous_gaussian_fitter = gf,
-            use_previous_gaussian_fitter_hrf = prf_settings['use_previous_gaussian_fitter_hrf'], 
+            use_previous_gaussian_fitter_hrf = use_previous_gaussian_fitter_hrf, 
             )
         ext_grid_bounds = [
             prf_settings['prf_ampl'],
@@ -235,7 +245,7 @@ Example:
             model=gg_ext,                  
             n_jobs=prf_settings['nr_jobs'],
             previous_gaussian_fitter = gf,
-            use_previous_gaussian_fitter_hrf = prf_settings['use_previous_gaussian_fitter_hrf'], 
+            use_previous_gaussian_fitter_hrf = use_previous_gaussian_fitter_hrf, 
             )
         ext_grid_bounds = [
             prf_settings['prf_ampl'],
@@ -261,7 +271,7 @@ Example:
             model=gg_ext,                  
             n_jobs=prf_settings['nr_jobs'],
             previous_gaussian_fitter = gf,
-            use_previous_gaussian_fitter_hrf = prf_settings['use_previous_gaussian_fitter_hrf'], 
+            use_previous_gaussian_fitter_hrf = use_previous_gaussian_fitter_hrf, 
             )
         ext_grid_bounds = [
             prf_settings['prf_ampl']
@@ -287,8 +297,9 @@ Example:
         (prf_settings['hrf']['deriv_bound']),                   # hrf_1 bound
         (prf_settings['hrf']['disp_bound']),                    # hrf_2 bound
     ]
-    ext_bounds = standard_bounds.copy() + ext_custom_bounds.copy() + hrf_bounds.copy()
-
+    ext_bounds = standard_bounds.copy() + ext_custom_bounds.copy()
+    if fit_hrf:
+        ext_bounds += hrf_bounds.copy()
     # Make sure we don't accidentally save gf stuff
     gf = []
     # ************************************************************************
@@ -366,12 +377,15 @@ Example:
     else:
         num_vx_for_bounds = num_vx_in_roi
 
-    model_vx_bounds = make_vx_wise_bounds(
-        num_vx_for_bounds, ext_bounds, model=model, 
-        fix_param_dict = {
-            'hrf_deriv' : gf_ext.gridsearch_params[:,model_idx['hrf_deriv']],
-            'hrf_disp' : gf_ext.gridsearch_params[:,model_idx['hrf_disp']],
-        })
+    if use_previous_gaussian_fitter_hrf:
+        model_vx_bounds = make_vx_wise_bounds(
+            num_vx_for_bounds, ext_bounds, model=model, 
+            fix_param_dict = {
+                'hrf_deriv' : gf_ext.gridsearch_params[:,model_idx['hrf_deriv']],
+                'hrf_disp' : gf_ext.gridsearch_params[:,model_idx['hrf_disp']],
+            })
+    else:
+        model_vs_bounds = ext_bounds
     
     # Constraints determines which scipy fitter is used
     # -> can also be used to make certain parameters interdependent (e.g. size depening on eccentricity... not normally done)

@@ -50,6 +50,7 @@ Fit the real time series using the gaussian
 
 Args:
     -s (--sub=)         e.g., 01
+    -n (--ses=)
     -t (--task=)        pRFLE,pRFRE
     -r (--roi_fit=)     e.g., all, V1_exvivo
     --nr_jobs           number of jobs
@@ -64,23 +65,23 @@ Example:
     """
     print('\n\n')
     # ALWAYS
-    ses = 'ses-1'
-    model = 'gauss'
-    fit_hrf = True
+    model = 'gauss'    
     verbose = True
     prf_out = 'prf'    
 
     # Specify
     sub = None
+    ses = None
     task = None
+    fit_hrf = False
     roi_fit = None
     constraints = None
     nr_jobs = None
 
 
     try:
-        opts = getopt.getopt(argv,"qp:s:t:m:r:d:c:",[
-            "help=", "sub=", "task=", "roi_fit=", "nr_jobs=",             
+        opts = getopt.getopt(argv,"qp:s:t:m:n:r:d:c:",[
+            "help=", "sub=", "task=", "ses=", "roi_fit=", "nr_jobs=", "hrf"            
             "tc", "bgfs"])[0]
     except getopt.GetoptError:
         print(main.__doc__)
@@ -95,6 +96,8 @@ Example:
             sub = dag_hyphen_parse('sub', arg)
         elif opt in ("-t", "--task"):
             task = arg
+        elif opt in ("-n", "--ses"):
+            ses = dag_hyphen_parse('ses', arg)
         elif opt in ("-r", "--roi_fit"):
             roi_fit = arg
         elif opt in ("--nr_jobs"):
@@ -103,6 +106,8 @@ Example:
             constraints = "tc"
         elif opt in ("--bgfs"):
             constraints = "bgfs"
+        elif opt in ("--hrf"):
+            fit_hrf = True
 
     if len(argv) < 1:
         print("NOT ENOUGH ARGUMENTS SPECIFIED")
@@ -117,7 +122,7 @@ Example:
         os.mkdir(opj(prf_dir, sub))
     if not os.path.exists(opj(prf_dir, sub, ses)): 
         os.mkdir(opj(prf_dir, sub, ses))    
-
+    
     outputdir = opj(prf_dir, sub, ses)
     out = f"{sub}_{dag_hyphen_parse('model', model)}_{dag_hyphen_parse('roi', roi_fit)}_{task}-fits"
 
@@ -142,7 +147,7 @@ Example:
 
     # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< LOAD TIME SERIES & MASK THE ROI   
     num_vx = np.sum(amb_load_nverts(sub=sub))
-    m_prf_tc_data = amb_load_real_tc(sub=sub, task_list=task)[task]
+    m_prf_tc_data = amb_load_real_tc(sub=sub, task_list=task, ses=ses)[task]
     roi_mask = amb_load_roi(sub=sub, label=roi_fit)
     # Are we limiting the fits to an roi?
     num_vx_in_roi = roi_mask.sum()
@@ -201,11 +206,17 @@ Example:
         polars  = np.linspace(0, 2*np.pi, grid_nr)              # Possible polar angle coordinates
 
         # We can also fit the hrf in the same way (specifically the derivative)
-        # -> make a grid between 0-10 (see settings file)
-        hrf_1_grid = np.linspace(prf_settings['hrf']['deriv_bound'][0], prf_settings['hrf']['deriv_bound'][1], int(grid_nr/2))
-        # We generally recommend to fix the dispersion value to 0
-        hrf_2_grid = np.array([0.0])        
+        if fit_hrf:
+            # -> make a grid between 0-10 (see settings file)
+            hrf_1_grid = np.linspace(prf_settings['hrf']['deriv_bound'][0], prf_settings['hrf']['deriv_bound'][1], int(grid_nr/2))
+            # We generally recommend to fix the dispersion value to 0
+            hrf_2_grid = np.array([0.0])        
+        else:
+            hrf_1_grid = None
+            hrf_2_grid = None            
+
         gauss_grid_bounds = [prf_settings['prf_ampl']] 
+
 
         gf.grid_fit(
             ecc_grid=eccs,
@@ -271,22 +282,13 @@ Example:
         (1e-1, max_eccentricity*3),                             # prf size bounds
         (prf_settings['prf_ampl'][0],prf_settings['prf_ampl'][1]),      # prf amplitude
         (prf_settings['bold_bsl'][0],prf_settings['bold_bsl'][1]),      # bold baseline (fixed)
+    ]
+
+    gauss_bounds += [
         (prf_settings['hrf']['deriv_bound'][0], prf_settings['hrf']['deriv_bound'][1]), # hrf_1 bound
         (prf_settings['hrf']['disp_bound'][0],  prf_settings['hrf']['disp_bound'][1]), # hrf_2 bound
-    ]
-    if 'AS0' not in task:
-        print('For AS1, or AS2, we need to fix the HRF parameters')
-        if zero_pad:
-            num_vx_for_bounds = num_vx
-        else:
-            num_vx_for_bounds = num_vx_in_roi
+        ]
 
-        gauss_bounds = make_vx_wise_bounds(
-            num_vx_for_bounds, gauss_bounds, model='gauss', 
-            fix_param_dict = {
-                'hrf_deriv' : gf.gridsearch_params[:,gauss_idx['hrf_deriv']],
-                'hrf_disp'  : gf.gridsearch_params[:,gauss_idx['hrf_disp']],
-            })
     # Constraints determines which scipy fitter is used
     # -> can also be used to make certain parameters interdependent (e.g. size depening on eccentricity... not normally done)
     if prf_settings['constraints']=='tc':

@@ -54,8 +54,7 @@ Example:
 ---------------------------------------------------------------------------------------------------
     """
     print('\n\n')
-    # Always
-    ses = 'ses-1'
+    # Always    
     verbose = True
     csf_out = 'csf'    
     model = 'csf'
@@ -63,6 +62,7 @@ Example:
 
     # Specify
     sub = None
+    ses = None
     task = None
     roi_fit = None
     constraints = None
@@ -70,8 +70,8 @@ Example:
     nr_jobs = 1
     ow = False
     try:
-        opts = getopt.getopt(argv,"h:s:t:r:",[
-            "help=", "sub=", "task=", "roi_fit=", "csf_out=","nr_jobs=",
+        opts = getopt.getopt(argv,"h:s:n:t:r:",[
+            "help=", "sub=","ses=", "task=", "roi_fit=", "csf_out=","nr_jobs=",
             "verbose", "tc", "bgfs", "hrf", "ow"])[0]
     except getopt.GetoptError:
         print(main.__doc__)
@@ -84,6 +84,8 @@ Example:
 
         elif opt in ("-s", "--sub"):
             sub = dag_hyphen_parse('sub', arg)
+        elif opt in ("-n", "--ses"):
+            ses = dag_hyphen_parse('ses', arg)            
         elif opt in ("-t", "--task"):
             task = arg 
         elif opt in ("-r", "--roi_fit"):
@@ -139,7 +141,7 @@ Example:
 
     # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< LOAD TIME SERIES & MASK THE ROI       
     num_vx = np.sum(amb_load_nverts(sub=sub))
-    tc_data = amb_load_real_tc(sub=sub, task_list=task, clip_start=clip_start)[task]
+    tc_data = amb_load_real_tc(sub=sub, ses=ses, task_list=task, clip_start=clip_start)[task]
     roi_mask = amb_load_roi(sub=sub, label=roi_fit)
     # Are we limiting the fits to an roi?
     num_vx_in_roi = roi_mask.sum()
@@ -282,7 +284,7 @@ Example:
 
     print(f'Mean rsq = {CSF_fit.gridsearch_params[:,-1].mean():.3f}')
     # ************************************************************************    
-    sys.exit()
+
     # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< DO ITERATIVE FIT
     iter_check = dag_find_file_in_folder([sub, model, task, roi_fit, 'iter', constraints], outputdir, return_msg=None)
     if (iter_check is not None) and (not ow):
@@ -296,9 +298,11 @@ Example:
         (settings['csf_bounds']['width_l']),     # width_l
         (settings['csf_bounds']['beta']),   # beta
         (settings['csf_bounds']['baseline']),      # baseline
-        (settings['hrf']['deriv_bound']),
-        (settings['hrf']['disp_bound']),
     ]
+    # if fit_hrf:
+    bounds += [
+        (settings['hrf']['deriv_bound']),
+        (settings['hrf']['disp_bound'])]
 
     # Constraints determines which scipy fitter is used
     # -> can also be used to make certain parameters interdependent (e.g. size depening on eccentricity... not normally done)
