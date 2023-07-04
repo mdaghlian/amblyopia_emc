@@ -22,7 +22,7 @@ prf_dir = opj(derivatives_dir, 'prf')
 
 sub_list = ['sub-01', 'sub-02']
 task_list = ['pRFLE', 'pRFRE']
-ses_list = ['ses-1']
+ses_list = ['ses-1'] # 'ses-2', 
 
 roi_fit = 'all'
 constraint = '--bgfs'
@@ -40,7 +40,7 @@ for sub in sub_list:
         
         # ************ LOOP THROUGH TASKS ***************
         for task in task_list:
-            prf_job_name = f'G{sub}_{task}_{roi_fit}'            
+            prf_job_name = f'G{sub}_{task}_{ses}_{roi_fit}'            
             # remove the 
             job=f"qsub -q short.q@jupiter -pe smp {nr_jobs} -wd {this_dir} -N {prf_job_name} -o {prf_job_name}.txt"
             # job="python"

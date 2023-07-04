@@ -113,22 +113,22 @@ def amb_load_real_tc(sub, task_list, ses, clip_start=0):
 
     return real_tc
 
-def amb_load_real_tc_run(sub, task_list, run_list, ses):
+def amb_load_real_tc_run(sub, task_list, ses):
     if not isinstance(task_list, list):
         task_list = [task_list]
-    if not isinstance(run_list, list):
-        run_list=[run_list]
+    # if not isinstance(run_list, list):
+    #     run_list=[run_list]
     unz_dir = opj(derivatives_dir, 'pybest', sub, ses, 'unzscored')
     real_tc = {}
     for task in task_list:
         real_tc[task] = []
-        for run in run_list:
-            LH_real_tc_file = dag_find_file_in_folder(
-                [task, f'run-{run}', 'fsnative', 'hemi-R_desc-denoised_bold'], unz_dir)
-            LH_tc = np.load(LH_real_tc_file)
-            RH_real_tc_file = dag_find_file_in_folder(
-                [task, f'run-{run}', 'fsnative', 'hemi-R_desc-denoised_bold'], unz_dir)
-            RH_tc = np.load(RH_real_tc_file)
+        run_listL = dag_find_file_in_folder([task, f'run-', 'fsnative', f'hemi-L_desc-denoised_bold'], unz_dir)
+        run_listL.sort()
+        run_listR = dag_find_file_in_folder([task, f'run-', 'fsnative', f'hemi-R_desc-denoised_bold'], unz_dir)
+        run_listR.sort()
+        for run in range(len(run_listL)):
+            LH_tc = np.load(run_listL[run])
+            RH_tc = np.load(run_listR[run])
             real_tc[task].append(np.concatenate([LH_tc, RH_tc], axis=1).T)
 
     return real_tc
@@ -214,7 +214,9 @@ def mat_struct_to_python_dict(mat_struct):
     for field in recordarr.dtype.names: #iterates through field names of numpy array
         for array in recordarr[field]: #iterates through the array of each numpy array                                    
             for value in array:
-                myList.append(np.squeeze(value.flatten()))
+                
+                myList.append(np.squeeze(value))
+                # myList.append(np.squeeze(value.flatten()))
                 #print(np.squeeze(value.flatten()[0]))
         
         # print(np.array(myList).shape)

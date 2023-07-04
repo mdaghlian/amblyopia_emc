@@ -5,6 +5,6 @@
     },
     "bold": {
         "datatype": "func",
-        "session": "2"
+        "session": "1,2"
     }
 }

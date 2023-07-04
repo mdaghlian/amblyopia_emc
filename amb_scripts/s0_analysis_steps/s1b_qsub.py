@@ -22,31 +22,33 @@ prf_dir = opj(derivatives_dir, 'prf')
 
 sub_list = ['sub-01', 'sub-02']
 task_list = ['pRFLE', 'pRFRE']
-model_list  = ['norm']
+model_list  = ['css']
+ses_list = ['ses-1', 'ses-2']
 
 roi_fit = 'all'
 constraint = '--bgfs'
-nr_jobs = 1
-ses = 'ses-1'
+nr_jobs = 5
 # ************ LOOP THROUGH SUBJECTS ***************
 for sub in sub_list:
-    if not os.path.exists(opj(prf_dir, sub)): 
-        os.mkdir(opj(prf_dir, sub))
-    if not os.path.exists(opj(prf_dir, sub, ses)): 
-        os.mkdir(opj(prf_dir, sub, ses))        
-    this_dir = opj(prf_dir, sub, ses)
-    
-    # ************ LOOP THROUGH TASKS ***************
-    for task in task_list:
+    # ************ LOOP THROUGH SESSIONS ***************
+    for ses in ses_list:    
+        if not os.path.exists(opj(prf_dir, sub)): 
+            os.mkdir(opj(prf_dir, sub))
+        if not os.path.exists(opj(prf_dir, sub, ses)): 
+            os.mkdir(opj(prf_dir, sub, ses))        
+        this_dir = opj(prf_dir, sub, ses)
+        
         # ************ LOOP THROUGH TASKS ***************
-        for model in model_list:        
-            prf_job_name = f'X{sub}_{model}_{task}_{roi_fit}'            
-            # remove the 
-            job=f"qsub -q short.q@jupiter -pe smp {nr_jobs} -wd {this_dir} -N {prf_job_name} -o {prf_job_name}.txt"
-            job="python"
+        for task in task_list:
+            # ************ LOOP THROUGH TASKS ***************
+            for model in model_list:        
+                prf_job_name = f'X{sub}_{ses}_{model}_{task}_{roi_fit}'            
+                # remove the 
+                job=f"qsub -q short.q@jupiter -pe smp {nr_jobs} -wd {this_dir} -N {prf_job_name} -o {prf_job_name}.txt"
+                # job="python"
 
-            script_path = opj(os.path.dirname(__file__),'s1b_run_prf_fit_X.py')
-            script_args = f"--sub {sub} --task {task} --model {model} --roi_fit {roi_fit} --nr_jobs {nr_jobs} {constraint}"
-            # print(f'{job} {script_path} {script_args}')
-            os.system(f'{job} {script_path} {script_args}')
-            sys.exit()
+                script_path = opj(os.path.dirname(__file__),'s1b_run_prf_fit_X.py')
+                script_args = f"--sub {sub} --task {task} --model {model} --roi_fit {roi_fit} --nr_jobs {nr_jobs} {constraint}"
+                # print(f'{job} {script_path} {script_args}')
+                os.system(f'{job} {script_path} {script_args}')
+                # sys.exit()

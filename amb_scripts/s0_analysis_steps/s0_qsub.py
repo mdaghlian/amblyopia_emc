@@ -21,7 +21,7 @@ derivatives_dir = os.getenv("DIR_DATA_DERIV")
 
 sub_list = ['sub-01', 'sub-02']
 task_list = ['pRFLE', 'pRFRE', 'CSFLE', 'CSFRE']
-ses_list = ['ses-1']#, 'ses-2']
+ses_list = ['ses-1', 'ses-2']
 
 nr_jobs = 1
 # ************ LOOP THROUGH SUBJECTS ***************

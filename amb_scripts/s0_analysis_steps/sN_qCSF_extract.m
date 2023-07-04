@@ -56,12 +56,13 @@ for i_file = 1:length(file_list)
         'lowSFtrunc', [],...    % 4 x CSF params, 4
         'sensitivity',[],...    % CSF curve 
         'AULCSF',[]);           % Area under log CSF...
-        
+
     % 
     qCSF_struct.SF_list = qCSF_SF_list;
     qCSF_struct.SF_history = QCSF_data.qcsf.data.history(:,2);
     qCSF_struct.CON_history = QCSF_data.qcsf.data.history(:,3);
     qCSF_struct.CORRECT_history = QCSF_data.qcsf.data.history(:,4);
+    % 
     qCSF_struct.params = QCSF_data.qcsf.data.estCSF(end,:);
     qCSF_struct.peakCS = QCSF_data.qcsf.data.estCSF(end,1);
     qCSF_struct.peakSF = QCSF_data.qcsf.data.estCSF(end,2);
@@ -69,6 +70,14 @@ for i_file = 1:length(file_list)
     qCSF_struct.lowSFtrunc = QCSF_data.qcsf.data.estCSF(end,4);
     qCSF_struct.sensitivity = QCSF_data.qcsf.data.estSensitivity(end,:);
     qCSF_struct.AULCSF = QCSF_data.qcsf.data.estAULCSF(end);
+    % As above, but with the trial wise values...
+    qCSF_struct.est_params = QCSF_data.qcsf.data.estCSF;
+    qCSF_struct.est_peakCS = QCSF_data.qcsf.data.estCSF(:,1);
+    qCSF_struct.est_peakSF = QCSF_data.qcsf.data.estCSF(:,2);
+    qCSF_struct.est_bdwth = QCSF_data.qcsf.data.estCSF(:,3);
+    qCSF_struct.est_lowSFtrunc = QCSF_data.qcsf.data.estCSF(:,4);
+    qCSF_struct.est_sensitivity = QCSF_data.qcsf.data.estSensitivity;
+    qCSF_struct.est_AULCSF = QCSF_data.qcsf.data.estAULCSF;    
     % 
     save_name = strjoin({sub, ses, this_eye, 'struct'}, '_');    
     save(fullfile(sub_qcsf_dir,save_name), 'qCSF_struct');        
