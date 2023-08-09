@@ -18,16 +18,19 @@ opj = os.path.join
 
 source_data_dir = os.getenv("DIR_DATA_SOURCE")
 derivatives_dir = os.getenv("DIR_DATA_DERIV")
-csf_dir = opj(derivatives_dir, 'csf')
+csf_dir = opj(derivatives_dir, 'bayes_csf')
+if not os.path.exists(csf_dir): 
+    os.mkdir(csf_dir)
 
 sub_list = ['sub-02']#['sub-01', 'sub-02']
-task_list = ['CSFLE', 'CSFRE']
-ses_list = ['ses-1', 'ses-2']
+task_list = ['CSFLE']#, 'CSFRE']
+ses_list = ['ses-1']#, 'ses-2']
 
-roi_fit = 'all_x1'
-constraint = '--bgfs'
-hrf = ''
-nr_jobs = 15
+roi_fit = 'demoB-100'
+nr_jobs = 20
+n_walkers = 50
+n_steps = 1000
+
 
 # ************ LOOP THROUGH SUBJECTS ***************
 for sub in sub_list:
@@ -43,11 +46,12 @@ for sub in sub_list:
         for task in task_list:
             prf_job_name = f'C{sub}_{task}_{roi_fit}'            
             # remove the 
-            job=f"qsub -q veryshort.q@jupiter -pe smp {nr_jobs} -wd {this_dir} -N {prf_job_name} -o {prf_job_name}.txt"
+            job=f"qsub -q long.q@jupiter -pe smp {nr_jobs} -wd {this_dir} -N {prf_job_name} -o {prf_job_name}.txt"
             # job="python"
 
-            script_path = opj(os.path.dirname(__file__),'s2_run_csf_fit.py')
-            script_args = f"--sub {sub} --ses {ses} --task {task} --roi_fit {roi_fit} --nr_jobs {nr_jobs} {constraint} {hrf}  --ow"
+            script_path = opj(os.path.dirname(__file__),'s3_run_bayes_csf_fit.py')
+            script_args  = f"--sub {sub} --ses {ses} --task {task} --roi_fit {roi_fit} --nr_jobs {nr_jobs} "
+            script_args += f"--n_walkers {n_walkers} --n_steps {n_steps} --ow"
             # print(f'{job} {script_path} {script_args}')
             os.system(f'{job} {script_path} {script_args}')
-            # sys.exit()
+            sys.exit()

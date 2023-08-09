@@ -55,7 +55,7 @@ def get_csf_curves(log_SFs, width_r, sf0, maxC, width_l):
 
     return csf_curve
 
-class AmbPlotter(Prf1T1M):
+class AmbCSFPlotter(Prf1T1M):
 
     def __init__(self, sub, real_tc, csf_params, **kwargs):
         super().__init__(csf_params, model='csf', **kwargs)
@@ -73,13 +73,7 @@ class AmbPlotter(Prf1T1M):
         self.sf_x_lim = (.25,20) # sf
         self.con_y_lim = (1, 500) # con
 
-
-    def csf_tc_plot(self, idx, time_pt=None, return_fig=False):
-        '''
-        
-        '''
-
-        # [1] Create csf_curve, pred_tc & rf
+    def return_csf_rf_curve(self, idx):
         this_csf_rf, this_csf_curve = csenf_exponential(
             log_SF_grid = self.csf_stim.log_SF_grid, 
             CON_S_grid = self.csf_stim.CON_S_grid, 
@@ -88,6 +82,23 @@ class AmbPlotter(Prf1T1M):
             maxC = self.pd_params['maxC'][idx], 
             width_l = self.pd_params['width_l'][idx], 
             return_curve = True)
+        return this_csf_rf, this_csf_curve        
+
+    def csf_tc_plot(self, idx, time_pt=None, return_fig=False):
+        '''
+        
+        '''
+
+        # [1] Create csf_curve, pred_tc & rf
+        # this_csf_rf, this_csf_curve = csenf_exponential(
+        #     log_SF_grid = self.csf_stim.log_SF_grid, 
+        #     CON_S_grid = self.csf_stim.CON_S_grid, 
+        #     width_r = self.pd_params['width_r'][idx], 
+        #     sf0 = self.pd_params['sf0'][idx], 
+        #     maxC = self.pd_params['maxC'][idx], 
+        #     width_l = self.pd_params['width_l'][idx], 
+        #     return_curve = True)
+        this_csf_rf, this_csf_curve = self.return_csf_rf_curve(idx)
         this_csf_rf = np.squeeze(this_csf_rf)
         this_pred_tc = np.squeeze(self.csf_model.return_prediction(*list(self.prf_params_np[idx,:-1])))
         this_real_tc = self.real_tc[idx,:]
@@ -251,4 +262,4 @@ class AmbPlotter(Prf1T1M):
             cmap='magma'
         )
         
-        cb = plt.gcf().colorbar(scat_col, ax=ax)
+        # cb = plt.gcf().colorbar(scat_col, ax=ax)

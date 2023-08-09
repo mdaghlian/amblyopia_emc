@@ -22,7 +22,7 @@ prf_dir = opj(derivatives_dir, 'prf')
 
 sub_list = ['sub-01', 'sub-02']
 task_list = ['pRFLE', 'pRFRE']
-model_list  = ['css']
+model_list  = ['norm']
 ses_list = ['ses-1', 'ses-2']
 
 roi_fit = 'all'
@@ -48,7 +48,7 @@ for sub in sub_list:
                 # job="python"
 
                 script_path = opj(os.path.dirname(__file__),'s1b_run_prf_fit_X.py')
-                script_args = f"--sub {sub} --task {task} --model {model} --roi_fit {roi_fit} --nr_jobs {nr_jobs} {constraint}"
+                script_args = f"--sub {sub} --ses {ses} --task {task} --model {model} --roi_fit {roi_fit} --nr_jobs {nr_jobs} {constraint} --ow"
                 # print(f'{job} {script_path} {script_args}')
                 os.system(f'{job} {script_path} {script_args}')
                 # sys.exit()

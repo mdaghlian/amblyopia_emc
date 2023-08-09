@@ -76,7 +76,9 @@ def amb_load_pkl(sub, task, model, ses, **kwargs):
     dir_to_search = opj(amb_prf_dir, sub, ses)
     include = kwargs.get("include", []) # any extra details to search for in file name
     exclude = kwargs.get("exclude", []) # any extra details to search for in file name
-    roi_fit = kwargs.get('roi_fit', 'all')    
+    roi_fit = kwargs.get('roi_fit', 'all') 
+    if roi_fit=='all':
+        exclude += ['_x']   
     fit_stage = kwargs.get('fit_stage', 'iter')
     fit_type = kwargs.get('fit_type', 'bgfs')
     # the folder specified in "dir_to_search" will contain several files

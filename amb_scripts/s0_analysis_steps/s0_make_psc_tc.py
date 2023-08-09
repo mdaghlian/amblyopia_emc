@@ -130,6 +130,9 @@ Args:
         run_ids.append(lsutils.split_bids_components(ii)["run"])
 
     run_ids = np.unique(np.array(run_ids))
+    if (sub=='sub-02') & ('CSF' in task):
+        print('ONLY DOING RUNS 1 & 2 & 3')
+        run_ids = ['1', '2', '3']
     # chunk into L/R pairs
     hemi_pairs = []
 

@@ -1,6 +1,6 @@
 import numpy as np
 
-def ncsf_curve(SFs, width_r, sf0, maxC, width_l):
+def ncsf_curve(SFs, width_r, sf0, maxC, width_l, apply_0_th = True):
     log_SFs = np.log10(SFs)
     log_sf0 = np.log10(sf0)
     log_maxC = np.log10(maxC)
@@ -16,7 +16,7 @@ def ncsf_curve(SFs, width_r, sf0, maxC, width_l):
     csf_curve[id_SF_right] = R_curve[id_SF_right]
 
     logCSF = np.log10(csf_curve)
-    apply_0_th = True
+    
     if apply_0_th:
         logCSF[logCSF<0] = 0
     return logCSF

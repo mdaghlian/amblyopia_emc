@@ -50,6 +50,7 @@ Fit the real time series using the gaussian
 
 Args:
     -s (--sub=)         e.g., 01
+    -n (--ses=)
     -m (--model=)       e.g., norm, css, dog
     -t (--task=)        pRFLE,pRFRE
     -r (--roi_fit=)     e.g., all, V1_exvivo
@@ -67,6 +68,7 @@ Example:
     # ALWAYS
     verbose = True
     prf_out = 'prf'    
+    ow = False
 
     # Specify
     sub = None
@@ -82,7 +84,7 @@ Example:
     try:
         opts = getopt.getopt(argv,"qp:s:t:n:m:r:d:c:",[
             "help=", "sub=", "model=", "task=","ses=", "roi_fit=", "nr_jobs=",             
-            "tc", "bgfs", "hrf"])[0]
+            "tc", "bgfs", "hrf", "ow"])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
@@ -110,6 +112,8 @@ Example:
             constraints = "bgfs"
         elif opt in ("--hrf"):
             fit_hrf = True            
+        elif opt in ("--ow"):
+            ow = True
 
     if len(argv) < 1:
         print("NOT ENOUGH ARGUMENTS SPECIFIED")
@@ -117,6 +121,7 @@ Example:
         sys.exit()
 
     prf_dir = opj(derivatives_dir, prf_out)
+
     # CREATE THE DIRECTORY TO SAVE THE PRFs
     if not os.path.exists(prf_dir): 
         os.mkdir(prf_dir)
@@ -148,7 +153,7 @@ Example:
 
     # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< LOAD TIME SERIES & MASK THE ROI   
     num_vx = np.sum(amb_load_nverts(sub=sub))
-    m_prf_tc_data = amb_load_real_tc(sub=sub, task_list=task)[task]
+    m_prf_tc_data = amb_load_real_tc(sub=sub, task_list=task, ses=ses)[task]
     roi_mask = amb_load_roi(sub=sub, label=roi_fit)
     # Are we limiting the fits to an roi?
     num_vx_in_roi = roi_mask.sum()
@@ -183,7 +188,7 @@ Example:
         model=gg,                       # model (see above)
         n_jobs=prf_settings['nr_jobs'], # number of jobs to use in parallelization 
         )
-    iter_gauss = dag_find_file_in_folder([sub, 'gauss', roi_fit, 'iter', task, constraints], outputdir)#, return_msg=None)        
+    iter_gauss = dag_find_file_in_folder([sub, 'gauss', roi_fit, 'iter', task, constraints], outputdir, return_msg=None)        
     if iter_gauss is None:
         # -> gauss is faster than the extended, so we may have the 'all' fit already...
         # -> check for this and use it if appropriate (make sure the correct constraints are applied)
@@ -297,7 +302,7 @@ Example:
         (prf_settings['hrf']['deriv_bound']),                   # hrf_1 bound
         (prf_settings['hrf']['disp_bound']),                    # hrf_2 bound
     ]
-    ext_bounds = standard_bounds.copy() + ext_custom_bounds.copy()
+    ext_bounds = standard_bounds.copy() + ext_custom_bounds.copy() + hrf_bounds.copy()
     if fit_hrf:
         ext_bounds += hrf_bounds.copy()
     # Make sure we don't accidentally save gf stuff
@@ -365,7 +370,7 @@ Example:
     
     # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< DO ITERATIVE FIT
     iter_check = dag_find_file_in_folder([out, model, 'iter', constraints], outputdir, return_msg=None)
-    if iter_check is not None:
+    if (iter_check is not None) and (not ow):
         print('Already done {iter_check}')
         sys.exit()        
 
@@ -376,8 +381,10 @@ Example:
         num_vx_for_bounds = num_vx
     else:
         num_vx_for_bounds = num_vx_in_roi
-
+    print(model)
+    print(model_idx)
     if use_previous_gaussian_fitter_hrf:
+        
         model_vx_bounds = make_vx_wise_bounds(
             num_vx_for_bounds, ext_bounds, model=model, 
             fix_param_dict = {
@@ -385,7 +392,7 @@ Example:
                 'hrf_disp' : gf_ext.gridsearch_params[:,model_idx['hrf_disp']],
             })
     else:
-        model_vs_bounds = ext_bounds
+        model_vx_bounds = ext_bounds
     
     # Constraints determines which scipy fitter is used
     # -> can also be used to make certain parameters interdependent (e.g. size depening on eccentricity... not normally done)
