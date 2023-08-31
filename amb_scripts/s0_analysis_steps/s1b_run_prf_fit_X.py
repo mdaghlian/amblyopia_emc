@@ -375,7 +375,7 @@ Example:
         sys.exit()        
 
     prf_settings['ext_bounds'] = ext_bounds
-    model_idx = print_p()[model]
+    model_idx = prfpy_params_dict()[model]
     # Need to fix HRF, using HRF bounds
     if zero_pad:
         num_vx_for_bounds = num_vx

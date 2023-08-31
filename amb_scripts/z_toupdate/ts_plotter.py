@@ -24,7 +24,7 @@ class Prf1TaskInfo(object):
         # Model information (could be norm, or gauss)
         self.model = model
         self.task = task
-        self.p_labels = print_p()[self.model]  # parameters of model (used for dictionary later )  e.g. x,y,a_sigma,a_val,....
+        self.p_labels = prfpy_params_dict()[self.model]  # parameters of model (used for dictionary later )  e.g. x,y,a_sigma,a_val,....
         # -> store the model parameters 
         self.params = params
         self.real_tc = real_tc

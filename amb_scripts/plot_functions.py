@@ -8,9 +8,9 @@ from matplotlib import patches
 import linescanning.plotting as lsplt
 from scipy.stats import binned_statistic
 # from highlight_text import HighlightText, ax_text, fig_text
-# from .utils import coord_convert, print_p
+# from .utils import coord_convert, prfpy_params_dict
 from dag_prf_utils.utils import dag_coord_convert as coord_convert
-from dag_prf_utils.prfpy_functions import print_p
+from dag_prf_utils.prfpy_functions import prfpy_params_dict
 # import rgba
 # import os 
 # import nibabel as nb
@@ -62,9 +62,9 @@ def time_series_plot(params, prfpy_stim, real_tc=[], pred_tc=[], model='gauss', 
     fmri_TR =kwargs.get("fmri_TR", 1.5)
 
     if model=='gauss':
-        model_idx = print_p()['gauss']
+        model_idx = prfpy_params_dict()['gauss']
     elif model=='norm':
-        model_idx = print_p()['norm']
+        model_idx = prfpy_params_dict()['norm']
 
     # ************* PRF (+stimulus) PLOT *************
     fig = plt.figure(constrained_layout=True, figsize=(15,5))

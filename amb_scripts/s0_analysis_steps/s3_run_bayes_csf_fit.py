@@ -192,11 +192,42 @@ Example:
         (settings['hrf']['deriv_bound']),
         (settings['hrf']['disp_bound'])
         ]
-    
-    CSF_bprf = BayesPRF(model='csf', prfpy_stim=CSF_stim) # BPRF model
+    bprf_kwargs = {}
+    bprf_kwargs['init_walker_method'] = 'gauss_ball'
+    # Reasonable starting point...
+    bprf_kwargs['init_walker_ps'] = [
+        1.5, 2, 40, # width_r, sf0, maxC
+        0.447,1,0,  # width_l, amp_1, bold_baseline
+        1,0         # hrf_deriv, hrf_disp
+        ] 
+    bprf_kwargs['gauss_ball_jitter'] = 1 # 
+    # bprf_kwargs['gauss_ball_jitter'] = .1*np.array([1, 2, 52, 6, 1]) # based on std
+    CSF_bprf = BayesPRF(
+        model='csf', 
+        prfpy_stim=CSF_stim, 
+        **bprf_kwargs
+        ) # BPRF model
     CSF_bprf.add_priors_from_bounds(bounds)
     CSF_bprf.prep_info()
-    
+    # set jitter proportional to bounds...
+    # pjitter = 1
+
+    # gball_jitter = []
+    # # for p in CSF_bprf.fit_p_list:
+    # #     gball_jitter.append(pjitter * (CSF_bprf.bounds[p][1] - CSF_bprf.bounds[p][0]))
+    # gball_jitter = pjitter * np.array([1.5, 2, 40, 1, 1])
+    # bprf_kwargs['gauss_ball_jitter'] = gball_jitter
+    # CSF_bprf.gauss_ball_jitter = gball_jitter
+    # # CSF_bprf.gauss_ball_jitter = 10
+    # ***
+    print(f'Initialised: {CSF_bprf.init_walker_method}')
+    if CSF_bprf.init_walker_method == 'gauss_ball':
+        print(f'Jitter about: {CSF_bprf.init_walker_ps}')
+        print(f'with jitter {CSF_bprf.gauss_ball_jitter}')
+    print(f'Fixed parameters: {CSF_bprf.fix_p_list}')
+    print(f'Fitting parameters: {CSF_bprf.fit_p_list}')
+
+
     i_start_time = datetime.now().strftime('%Y-%m-%d_%H-%M')
     print(f'Starting bayes fit {i_start_time}, doing {nr_jobs} voxels at a time...')
     start = time.time()
@@ -231,14 +262,24 @@ Example:
     elapsed = (time.time() - start)
     print(f'Finished bayes fit {i_end_time}')
     print(f'Took {timedelta(seconds=elapsed)}')
+    # Print mean rsq:
+    best_rsq = np.zeros(len(samples_pvx)) * np.nan
+    for i,this_sample in enumerate(samples_pvx):
+        if len(this_sample['rsq'])>0:
+            best_rsq[i] = np.nanmax(this_sample['rsq'])
+    id_not_nan = np.isnan(best_rsq)==0
+    print(f'n not nan ={id_not_nan.sum()}')
+    print(f'm rsq ={best_rsq[id_not_nan].mean()}')    
     # Save everything
     bparams = {}
     bparams['settings'] = settings
     bparams['bounds'] = bounds
     bparams['samples'] = samples_pvx
+    bparams['bprf_kwargs'] = bprf_kwargs
     bparams['roi_mask'] = roi_mask
+    bparams['init_walker_ps'] = roi_mask
     bparams['start_time'] = i_start_time
-    bparams['end_time'] = i_end_time
+    bparams['end_time'] = i_end_time    
     pkl_file = opj(outputdir, f'{out}_desc-bayes-csf_params.pkl')
     f = open(pkl_file, "wb")
     pickle.dump(bparams, f)

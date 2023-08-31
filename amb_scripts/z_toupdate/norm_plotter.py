@@ -41,7 +41,7 @@ class NormModelInfo(object):
         # add the aperture
         self.aperture = self.prfpy_stim.ecc_coordinates>(self.prfpy_stim.screen_size_degrees/2)
         # parameters associated with each idx 
-        self.p_labels = print_p()['norm']
+        self.p_labels = prfpy_params_dict()['norm']
         self.params_dict = {}
         for this_label in self.p_labels.keys():
             this_id = self.p_labels[this_label]

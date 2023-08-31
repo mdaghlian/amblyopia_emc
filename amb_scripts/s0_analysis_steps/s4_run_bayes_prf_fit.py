@@ -53,7 +53,7 @@ Args:
     -m (--model=)       e.g., norm, css, dog
     -s (--sub=)         e.g., 01
     -n (--ses=)
-    -t (--task=)        CSFLE,CSFRE
+    -t (--task=)        
     -r (--roi_fit=)     all, V1_exvivo
     --n_walkers         number of walkers
     --n_steps           number of steps
@@ -84,7 +84,7 @@ Example:
 
     try:
         opts = getopt.getopt(argv,"h:s:n:t:m:r:",[
-            "help=", "sub=","ses=", "task=", "model=", "roi_fit=", "csf_out=","nr_jobs=",
+            "help=", "sub=","ses=", "task=", "model=", "roi_fit=", "prf_out=","nr_jobs=",
             "n_steps=", "n_walkers=", "ow"])[0]
     except getopt.GetoptError:
         print(main.__doc__)
@@ -104,8 +104,8 @@ Example:
             model = arg
         elif opt in ("-r", "--roi_fit"):
             roi_fit = arg
-        elif opt in ("--csf_out"):
-            csf_out = arg        
+        elif opt in ("--prf_out"):
+            prf_out = arg        
         elif opt in ("--nr_jobs"):
             nr_jobs = int(arg)            
         elif opt in ("--n_walkers"):
@@ -175,7 +175,7 @@ Example:
     # ************************************************************************
     
     # Check for old parameters:
-    old_params = dag_find_file_in_folder([sub, model, task, roi_fit], outputdir, return_msg=None)
+    old_params = dag_find_file_in_folder([sub, model, task, roi_fit], outputdir, exclude='.txt', return_msg=None)
     if (old_params is not None) and (not ow):
         print(f'Already done {old_params}, not overwriting')
         sys.exit()        
@@ -185,17 +185,27 @@ Example:
     print('Starting MCMC bayesian fitting...')
     print(f'Num walkers = {n_walkers}, n_steps={n_steps}, n_vox at a time = {nr_jobs}')
     
+    bprf_kwargs = {}
     # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< CREATE MODEL & fitter
     if model=='gauss': # ******************************** GAUSS
         extra_bounds = []
+        bprf_kwargs['init_walker_method'] = 'gauss_ball'
+        bprf_kwargs['init_walker_ps'] = [0,0,1,0.01,0,1,0] # Reasonable starting point...
     elif model=='norm': # ******************************** NORM
+        bprf_kwargs['init_walker_method'] = 'gauss_ball'
+        # Reasonable starting point...
+        bprf_kwargs['init_walker_ps'] = [
+            0,0,1,      #x,y,size_1
+            10,0,1,     #amp_1,bold_baseline,amp_2,
+            10,50,100,  #size_2,b_val,d_val
+            1,0         #hrf_deriv, hrf_disp
+            ] # 
         extra_bounds = [
             (prf_settings['prf_ampl']),                             # surround amplitude
             (1e-1, max_eccentricity*6),                             # surround size
             (prf_settings['norm']['neural_baseline_bound']),        # neural baseline (b) 
             (prf_settings['norm']['surround_baseline_bound']),      # surround baseline (d)
             ] 
-        
     elif model=='dog': # ******************************** DOG
         extra_bounds = [
             (prf_settings['prf_ampl']),                             # surround amplitude
@@ -222,11 +232,23 @@ Example:
         (prf_settings['hrf']['disp_bound']),                    # hrf_2 bound
     ]
     bounds = standard_bounds.copy() + extra_bounds.copy() + hrf_bounds.copy()
+    bprf_kwargs['gauss_ball_jitter'] = .1
     # ************************************************************************
-    bprf = BayesPRF(model=model, prfpy_stim=prf_stim) # BPRF model
+    bprf = BayesPRF(
+        model=model, 
+        prfpy_stim=prf_stim,
+        **bprf_kwargs) # BPRF model
     bprf.add_priors_from_bounds(bounds)
     bprf.prep_info()
+
+    print(f'Initialised: {bprf.init_walker_method}')
+    if bprf.init_walker_method == 'gauss_ball':
+        print(f'Jitter about: {bprf.init_walker_ps}')
+        print(f'with jitter {bprf.gauss_ball_jitter}')        
     
+    print(f'Fixed parameters: {bprf.fix_p_list}')
+    print(f'Fitting parameters: {bprf.fit_p_list}')
+
     i_start_time = datetime.now().strftime('%Y-%m-%d_%H-%M')
     print(f'Starting bayes fit for {model} {i_start_time}, doing {nr_jobs} voxels at a time...')
     start = time.time()
@@ -261,15 +283,25 @@ Example:
     elapsed = (time.time() - start)
     print(f'Finished bayes fit {i_end_time}')
     print(f'Took {timedelta(seconds=elapsed)}')
+    # # Print mean rsq:
+    # Print mean rsq:
+    best_rsq = np.zeros(len(samples_pvx)) * np.nan
+    for i,this_sample in enumerate(samples_pvx):
+        if len(this_sample['rsq'])>0:
+            best_rsq[i] = np.nanmax(this_sample['rsq'])
+    id_not_nan = np.isnan(best_rsq)==0
+    print(f'n not nan ={id_not_nan.sum()}')
+    print(f'm rsq ={best_rsq[id_not_nan].mean()}') 
     # Save everything
     bparams = {}
     bparams['settings'] = prf_settings
     bparams['bounds'] = bounds
     bparams['samples'] = samples_pvx
+    bparams['bprf_kwargs'] = bprf_kwargs
     bparams['roi_mask'] = roi_mask
     bparams['start_time'] = i_start_time
     bparams['end_time'] = i_end_time
-    pkl_file = opj(outputdir, f'{out}_desc-bayes-csf_params.pkl')
+    pkl_file = opj(outputdir, f'{out}_desc-bayes-prf_params.pkl')
     f = open(pkl_file, "wb")
     pickle.dump(bparams, f)
     f.close()    

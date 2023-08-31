@@ -11,7 +11,7 @@ from prfpy.stimulus import PRFStimulus2D, CSenFStimulus
 
 # import linescanning.utils as lsutils
 import pandas as pd
-# from .utils import print_p
+# from .utils import prfpy_params_dict
 # from collections import defaultdict as dd
 # import cortex
 
@@ -45,6 +45,14 @@ def amb_load_prf_params(sub, task_list, model_list, ses, **kwargs):
         sub=sub, task_list=task_list, model_list=model_list, ses=ses, key='pars', **kwargs)
     return prf_params
 
+def amb_load_bayes_prf(sub, task_list, model_list, ses, **kwargs):    
+    kwargs['key'] = kwargs.get('key', 'samples')
+    prf_params = amb_load_pkl_key(
+        sub=sub, task_list=task_list, model_list=model_list, 
+        ses=ses, do_bayes=True, **kwargs)
+    return prf_params
+
+
 def amb_load_pkl_key(sub, task_list, model_list, ses, key, **kwargs):
     if not isinstance(task_list, list):
         task_list = [task_list]
@@ -64,14 +72,18 @@ def amb_load_pkl(sub, task, model, ses, **kwargs):
     linescanning toolbox nicely saves everything into a pickle
     this will load the correct pickle associated with the correct, sub, ses, model and task
     roi_fit specifies which fitting run was used.  
-    '''    
+    '''
+    do_bayes = kwargs.get('do_bayes', False)    
+    bkey = ''    
+    if do_bayes:
+        bkey='bayes_'
+
     if 'pRF' in task:
         # amb_prf_dir = opj(derivatives_dir, 'amb-prf')
-        amb_prf_dir = opj(derivatives_dir, 'prf')
+        amb_prf_dir = opj(derivatives_dir, f'{bkey}prf')
     else:
         # amb_prf_dir = opj(derivatives_dir, 'amb-csf')
-        amb_prf_dir = opj(derivatives_dir, 'csf')
-
+        amb_prf_dir = opj(derivatives_dir, f'{bkey}csf')
 
     dir_to_search = opj(amb_prf_dir, sub, ses)
     include = kwargs.get("include", []) # any extra details to search for in file name
@@ -81,6 +93,9 @@ def amb_load_pkl(sub, task, model, ses, **kwargs):
         exclude += ['_x']   
     fit_stage = kwargs.get('fit_stage', 'iter')
     fit_type = kwargs.get('fit_type', 'bgfs')
+    if do_bayes:
+        fit_stage = ''
+        fit_type = ''
     # the folder specified in "dir_to_search" will contain several files
     # -> different fit types (grid vs iter), model (gauss vs norm) task (As0,AS1,AS2) and 
     # Now we need to find the relevant file, by filtering for key terms (see included)
@@ -162,7 +177,6 @@ def amb_load_prfpy_stim(dm_type='pRF', clip_start=0):
         screen_info_path = opj(dm_dir, 'screen_info.yml')
         with open(screen_info_path) as f:
             screen_info = yaml.safe_load(f)
-
         dm_prf = amb_load_dm('prf')['prf'][:,:,clip_start::]    
         prfpy_stim = PRFStimulus2D(
             screen_size_cm    =screen_info['screen_size_cm'],
@@ -207,6 +221,26 @@ def amb_load_qcsf(sub, eye_list, ses):
     
     
     return qCSF_info
+
+def amb_load_cmf(sub, task_list, ses, **kwargs):    
+    if not isinstance(task_list, list):
+        task_list = [task_list]
+    this_dir = opj(derivatives_dir, 'cmf_est', sub, ses)
+    cmf_data = {}
+    for task in task_list:        
+        cmf_file = dag_find_file_in_folder([task, 'cmf', '.pkl'], this_dir)
+        if isinstance(cmf_file, list):
+            print(include)
+            print(f'Error, more than 1 match ({len(cmf_file)} files)')
+            print(cmf_file)
+            sys.exit()
+
+        pkl_file = open(cmf_file,'rb')
+        cmf_data[task] = pickle.load(pkl_file)['cmf']
+        # replace any nans in the cmf with -1
+        cmf_data[task][np.isnan(cmf_data[task])] = -1
+        pkl_file.close()              
+    return cmf_data     
 
 def mat_struct_to_python_dict(mat_struct):
     # mat_struct = scipy.io.loadmat(file/path).get('entry_of_interest')

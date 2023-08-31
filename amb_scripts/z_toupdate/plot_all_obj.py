@@ -27,7 +27,7 @@ class AllPrfInfo(object):
         self.task_list = task_list
         self.p_labels = {}
         for model in model_list:
-            self.p_labels[model] = print_p()[model]  # parameters of model (used for dictionary later )  e.g. x,y,a_sigma,a_val,....
+            self.p_labels[model] = prfpy_params_dict()[model]  # parameters of model (used for dictionary later )  e.g. x,y,a_sigma,a_val,....
         # -> store the model parameters 
         self.params_np = get_model_params(
                 sub=sub, task_list=task_list, model_list=model_list,

@@ -15,19 +15,22 @@ run_csf_fit
 import os
 import sys
 opj = os.path.join
+from dag_prf_utils.utils import dag_get_cores_used
+import time
+
 
 source_data_dir = os.getenv("DIR_DATA_SOURCE")
 derivatives_dir = os.getenv("DIR_DATA_DERIV")
 csf_dir = opj(derivatives_dir, 'csf')
 
-sub_list = ['sub-02']#['sub-01', 'sub-02']
+sub_list = ['sub-02', 'sub-01']#['sub-01', 'sub-02']
 task_list = ['CSFLE', 'CSFRE']
 ses_list = ['ses-1', 'ses-2']
 
-roi_fit = 'all_x1'
+roi_fit = 'all'
 constraint = '--bgfs'
 hrf = ''
-nr_jobs = 15
+nr_jobs = 7
 
 # ************ LOOP THROUGH SUBJECTS ***************
 for sub in sub_list:
@@ -48,6 +51,10 @@ for sub in sub_list:
 
             script_path = opj(os.path.dirname(__file__),'s2_run_csf_fit.py')
             script_args = f"--sub {sub} --ses {ses} --task {task} --roi_fit {roi_fit} --nr_jobs {nr_jobs} {constraint} {hrf}  --ow"
+            n_cores_used = dag_get_cores_used()
+            while n_cores_used>60:
+                time.sleep(60*5)
+                n_cores_used = dag_get_cores_used()            
             # print(f'{job} {script_path} {script_args}')
             os.system(f'{job} {script_path} {script_args}')
             # sys.exit()

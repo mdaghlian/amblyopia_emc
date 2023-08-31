@@ -192,7 +192,7 @@ Example:
         # -> grid is faster than the iter, so we may have the 'all' fit already...
         # -> check for this and use it if appropriate
         old_grid_params = dag_find_file_in_folder([sub, model, task, 'all', 'grid'], outputdir, return_msg=None)
-    csf_idx = print_p()['csf']
+    csf_idx = prfpy_params_dict()['csf']
     if (old_grid_params is None) or ow:
         print('Not done grid fit - doing that now')
         g_start_time = datetime.now().strftime('%Y-%m-%d_%H-%M')

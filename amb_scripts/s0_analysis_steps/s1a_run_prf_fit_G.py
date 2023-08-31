@@ -193,7 +193,7 @@ Example:
         # -> grid is faster than the iter, so we may have the 'all' fit already...
         # -> check for this and use it if appropriate
         grid_gauss = dag_find_file_in_folder([sub, model, task, 'all', 'gauss', 'grid'], outputdir, return_msg=None)
-    gauss_idx = print_p()['gauss']
+    gauss_idx = prfpy_params_dict()['gauss']
     if grid_gauss is None:
         print('Not done grid fit - doing that now')
         g_start_time = datetime.now().strftime('%Y-%m-%d_%H-%M')

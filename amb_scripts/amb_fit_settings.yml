@@ -11,8 +11,8 @@ u_sfs : [ 0.5,  1. ,  3. ,  6. , 12. , 18. ]
 u_con : [ 0.25      ,  0.38962234,  0.60722228,  0.94634947,  1.47487559, 2.29857792,  3.58230926,  5.5829909 ,  8.70103197, 13.56046584, 21.13384187, 32.9368679 , 51.33175852, 80.]
 # set csf grids and bounds
 csf_bounds:
-  width_r   : [0, 3]# [0,3] NOW FOLLOWING CARLIEN [0,5]   # width_r
-  sf0       : [0,6]# [0,6] NOW FOLLOWING CARLIEN [0,10]       # sf0
+  width_r   : [0, 5]# [0,5], [0,3] NOW FOLLOWING CARLIEN [0,5]   # width_r
+  sf0       : [0,18]# [0,6] NOW FOLLOWING CARLIEN [0,10]       # sf0
   maxC      : [0, 200]# NOW FOLLOWING CARLIEN [0,100]     # maxC
   width_l   : [0.448,0.448]# NOW FOLLOWING CARLIEN [0,5]   # width_l
   beta      : [0,1000]    # beta
@@ -33,7 +33,7 @@ normalize_RFs: False
 #DM size in pixels (n_pix x n_pix) (has to be divisor of 1080)
 n_pix: 100
 # set prf amplitude
-bold_bsl: [-5,5]
+bold_bsl: [-5,5] # -5,5 # 0,0
 prf_ampl: [0,1000]
 css_exponent: [0.01,3]
 

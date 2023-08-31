@@ -64,3 +64,54 @@ def qcsf_curve(SFs, peakCS, peakSF, bdwth, lowSFtrunc):
     logCSF[np.where(logCSF < 0)] = 0
 
     return logCSF
+
+from prfpy.rf import csenf_exponential
+def add_aulcsf_to_obj(prf_obj, prfpy_stim):
+    vx_mask = prf_obj.return_vx_mask({'min-rsq':.1})
+    this_AULCSF = np.zeros(prf_obj.n_vox)
+    this_rfs = csenf_exponential(
+        log_SF_grid = prfpy_stim.log_SF_grid, 
+        CON_S_grid = prfpy_stim.CON_S_grid, 
+        width_r = prf_obj.pd_params['width_r'][vx_mask].to_numpy(), 
+        sf0 = prf_obj.pd_params['sf0'][vx_mask].to_numpy(), 
+        maxC = prf_obj.pd_params['maxC'][vx_mask].to_numpy(), 
+        width_l = prf_obj.pd_params['width_l'][vx_mask].to_numpy(),)
+    this_AULCSF[vx_mask] = this_rfs.sum(axis=(1,2)) / (this_rfs.shape[1] * this_rfs.shape[2])
+    return this_AULCSF
+
+def add_aulcsf_to_objV2(prf_obj, prfpy_stim):
+    vx_mask = prf_obj.return_vx_mask({'min-rsq':.1})
+    SFs = np.linspace(0,100,100)
+    
+    logCSF = ncsf_curve_multi(
+        SFs=SFs, 
+        width_r = prf_obj.pd_params['width_r'].to_numpy(), 
+        sf0 = prf_obj.pd_params['sf0'].to_numpy(), 
+        maxC = prf_obj.pd_params['maxC'].to_numpy(), 
+        width_l = prf_obj.pd_params['width_l'].to_numpy(), 
+        apply_0_th = True)    
+    this_AULCSF = np.trapz(10**logCSF, x=SFs, axis=0)
+    this_AULCSF[~vx_mask] = 0
+    return this_AULCSF
+
+
+
+
+def ncsf_curve_multi(SFs, width_r, sf0, maxC, width_l, apply_0_th = True):
+    log_SFs = np.log10(SFs)
+    log_sf0 = np.log10(sf0)
+    log_maxC = np.log10(maxC)
+    id_SF_left  = log_SFs[..., np.newaxis] <  log_sf0
+    id_SF_right = log_SFs[..., np.newaxis] >= log_sf0    
+
+    L_curve = 10**(log_maxC - ((log_SFs[..., np.newaxis]-log_sf0)**2) * (width_l**2))
+    R_curve = 10**(log_maxC - ((log_SFs[..., np.newaxis]-log_sf0)**2) * (width_r**2))
+
+    csf_curve = np.zeros_like(L_curve)
+    csf_curve[id_SF_left] = L_curve[id_SF_left]
+    csf_curve[id_SF_right] = R_curve[id_SF_right]
+
+    logCSF = np.log10(csf_curve)
+    if apply_0_th:
+        logCSF[logCSF<0] = 0
+    return logCSF    
