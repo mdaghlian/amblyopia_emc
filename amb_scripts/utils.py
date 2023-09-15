@@ -78,10 +78,10 @@ def add_aulcsf_to_obj(prf_obj, prfpy_stim):
         width_l = prf_obj.pd_params['width_l'][vx_mask].to_numpy(),)
     this_AULCSF[vx_mask] = this_rfs.sum(axis=(1,2)) / (this_rfs.shape[1] * this_rfs.shape[2])
     return this_AULCSF
-
-def add_aulcsf_to_objV2(prf_obj, prfpy_stim):
+import matplotlib.pyplot as plt
+def add_aulcsf_to_objV2(prf_obj):
     vx_mask = prf_obj.return_vx_mask({'min-rsq':.1})
-    SFs = np.linspace(0,100,100)
+    SFs = np.linspace(0.5,20,100)
     
     logCSF = ncsf_curve_multi(
         SFs=SFs, 
@@ -89,9 +89,21 @@ def add_aulcsf_to_objV2(prf_obj, prfpy_stim):
         sf0 = prf_obj.pd_params['sf0'].to_numpy(), 
         maxC = prf_obj.pd_params['maxC'].to_numpy(), 
         width_l = prf_obj.pd_params['width_l'].to_numpy(), 
-        apply_0_th = True)    
-    this_AULCSF = np.trapz(10**logCSF, x=SFs, axis=0)
+        apply_0_th = True)
+    
+    # this_AULCSF = np.trapz(10**logCSF, x=SFs, axis=0) # old version    
+    this_AULCSF = np.trapz(logCSF, x=np.log10(SFs), axis=0) # Should be this? I think it should be log log...
+
+    # Find out max possible area
+    max_possible_logCSF = np.ones_like(SFs) * np.log10(200)
+    max_possible_AULCSF = np.trapz(max_possible_logCSF, x=np.log10(SFs), axis=0) 
+    
+    # Normalize?
+    this_AULCSF = this_AULCSF / max_possible_AULCSF
+
+    # Mask 
     this_AULCSF[~vx_mask] = 0
+
     return this_AULCSF
 
 
