@@ -7,14 +7,7 @@ import pickle
 opj = os.path.join
 
 import nibabel as nb
-from prfpy.stimulus import PRFStimulus2D, CSenFStimulus
-
-# import linescanning.utils as lsutils
-import pandas as pd
-# from .utils import prfpy_params_dict
-# from collections import defaultdict as dd
-# import cortex
-
+from prfpy_csenf.stimulus import PRFStimulus2D, CSenFStimulus
 # from .utils import hyphen_parse, coord_convert
 from dag_prf_utils.utils import *
 

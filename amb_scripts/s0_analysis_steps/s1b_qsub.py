@@ -25,7 +25,7 @@ task_list = ['pRFLE', 'pRFRE']
 model_list  = ['norm']
 ses_list = ['ses-1', 'ses-2']
 
-roi_fit = 'all'
+roi_fit = 'demo-100'
 constraint = '--bgfs'
 nr_jobs = 5
 # ************ LOOP THROUGH SUBJECTS ***************
@@ -45,10 +45,10 @@ for sub in sub_list:
                 prf_job_name = f'X{sub}_{ses}_{model}_{task}_{roi_fit}'            
                 # remove the 
                 job=f"qsub -q short.q@jupiter -pe smp {nr_jobs} -wd {this_dir} -N {prf_job_name} -o {prf_job_name}.txt"
-                # job="python"
+                job="python"
 
                 script_path = opj(os.path.dirname(__file__),'s1b_run_prf_fit_X.py')
                 script_args = f"--sub {sub} --ses {ses} --task {task} --model {model} --roi_fit {roi_fit} --nr_jobs {nr_jobs} {constraint} --ow"
                 # print(f'{job} {script_path} {script_args}')
                 os.system(f'{job} {script_path} {script_args}')
-                # sys.exit()
+                sys.exit()

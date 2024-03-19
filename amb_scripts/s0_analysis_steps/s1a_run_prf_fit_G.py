@@ -14,9 +14,9 @@ run_prf_fit_G
 
 import getopt
 
-from prfpy.stimulus import PRFStimulus2D
-from prfpy.model import Iso2DGaussianModel
-from prfpy.fit import Iso2DGaussianFitter
+from prfpy_csenf.stimulus import PRFStimulus2D
+from prfpy_csenf.model import Iso2DGaussianModel
+from prfpy_csenf.fit import Iso2DGaussianFitter
 
 import numpy as np
 import os
