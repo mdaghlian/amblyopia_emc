@@ -12,7 +12,7 @@ clc
 amb_code_dir = '/data1/projects/dumoulinlab/Lab_members/Marcus/projects/amblyopia_emc/code/amb_code/amb_scripts/dm_files/';
 qcsf_dir = '/data1/projects/dumoulinlab/Lab_members/Marcus/projects/amblyopia_emc/derivatives/qCSF/';
 
-sub_list = {'sub-01', 'sub-02'};
+sub_list = {'sub-01', 'sub-02', 'sub-03'};
 ses_list = {'ses-1', 'ses-2'};
 
 for i_sub=1:numel(sub_list)
@@ -34,6 +34,8 @@ for i_file = 1:length(file_list)
         continue
     end
     this_file = fullfile(sub_qcsf_dir, file_list(i_file).name);
+    disp(this_file)
+
     QCSF_data = load(this_file);
     
     % Save basic stimuli info, to the dm folder in amb_code...

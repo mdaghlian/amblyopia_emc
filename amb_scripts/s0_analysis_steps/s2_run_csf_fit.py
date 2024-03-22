@@ -15,8 +15,8 @@ import pickle
 from joblib import parallel_backend
 warnings.filterwarnings('ignore')
 opj = os.path.join
-from prfpy.model import CSenFModel
-from prfpy.fit import CSenFFitter
+from prfpy_csenf.model import CSenFModel
+from prfpy_csenf.fit import CSenFFitter
 
 from amb_scripts.load_saved_info import *
 # from amb_scripts.utils import *
@@ -158,13 +158,7 @@ Example:
     c_vect = csf_dm['c_vect'][clip_start::]
 
     # Number of stimulus types:
-    u_sfs = np.sort(list(set(sf_vect))) # unique SFs
-    u_sfs = u_sfs[u_sfs>0]
-    u_con = np.sort(list(set(c_vect)))
-    u_con = u_con[u_con>0]
     CSF_stim = CSenFStimulus(
-        SFs = u_sfs,
-        CONs = u_con,
         SF_seq=sf_vect,
         CON_seq = c_vect,
         TR=settings['TR'],
@@ -202,20 +196,21 @@ Example:
         width_r_grid   = np.linspace(
             settings['csf_bounds']['width_r'][0],
             settings['csf_bounds']['width_r'][1],
-            settings['csf_grid_nr'] )     
-        sf0_grid       = np.linspace(
-            settings['csf_bounds']['sf0'][0],
-            settings['csf_bounds']['sf0'][1],
-            settings['csf_grid_nr'] ) 
-        maxC_grid      = np.linspace(
-            settings['csf_bounds']['maxC'][0],
-            settings['csf_bounds']['maxC'][1],
+            settings['csf_grid_nr'] // 4)     
+        SFp_grid       = np.linspace(
+            settings['csf_bounds']['SFp'][0],
+            settings['csf_bounds']['SFp'][1],
+            settings['csf_grid_nr'] // 4 ) 
+        CSp_grid      = np.linspace(
+            settings['csf_bounds']['CSp'][0],
+            settings['csf_bounds']['CSp'][1],
             settings['csf_grid_nr'] ) # BOOST
         width_l_grid   = np.array(settings['csf_bounds']['width_l'][0])
-            # settings['csf_bounds']['width_l'][0],
-            # settings['csf_bounds']['width_l'][1],
-            # settings['grid_nr'] )
-
+        crf_exp_grid = np.linspace(
+            settings['csf_bounds']['crf_exp'][0],
+            settings['csf_bounds']['crf_exp'][1],
+            settings['csf_grid_nr']          
+        )
         # We can also fit the hrf in the same way (specifically the derivative)
         # -> make a grid between 0-10 (see settings file)
         if fit_hrf:
@@ -224,17 +219,19 @@ Example:
                 settings['hrf']['deriv_bound'][1], 
                 settings['csf_grid_nr'] )
             # We generally recommend to fix the dispersion value to 0
+            bloop
             hrf_2_grid = np.array([0.0])        
         else:
             hrf_1_grid = None
             hrf_2_grid = None
-        csf_grid_bounds = [settings['csf_bounds']['beta']]
+        csf_grid_bounds = [settings['csf_bounds']['amp_1']]
         # Start grid fit
         CSF_fit.grid_fit(
             width_r_grid    = width_r_grid,
-            sf0_grid        = sf0_grid,
-            maxC_grid       = maxC_grid,
+            SFp_grid        = SFp_grid,
+            CSp_grid       = CSp_grid,
             width_l_grid    = width_l_grid,
+            crf_exp_grid    = crf_exp_grid,
             hrf_1_grid      = hrf_1_grid,
             hrf_2_grid      = hrf_2_grid,
             verbose         = True,
@@ -293,11 +290,12 @@ Example:
 
     bounds = [
         (settings['csf_bounds']['width_r']),     # width_r
-        (settings['csf_bounds']['sf0']),     # sf0
-        (settings['csf_bounds']['maxC']),    # maxC
+        (settings['csf_bounds']['SFp']),     # SFp
+        (settings['csf_bounds']['CSp']),    # CSp
         (settings['csf_bounds']['width_l']),     # width_l
-        (settings['csf_bounds']['beta']),   # beta
-        (settings['csf_bounds']['baseline']),      # baseline
+        (settings['csf_bounds']['crf_exp']),   # beta        
+        (settings['csf_bounds']['amp_1']),   # beta
+        (settings['csf_bounds']['bold_baseline']),      # baseline
     ]
     # if fit_hrf:
     bounds += [
