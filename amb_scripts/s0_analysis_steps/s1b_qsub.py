@@ -20,14 +20,14 @@ source_data_dir = os.getenv("DIR_DATA_SOURCE")
 derivatives_dir = os.getenv("DIR_DATA_DERIV")
 prf_dir = opj(derivatives_dir, 'prf')
 
-sub_list = ['sub-01', 'sub-02']
+sub_list = ['sub-03'] # 'sub-01', 'sub-02', 'sub-03']
 task_list = ['pRFLE', 'pRFRE']
-model_list  = ['norm']
+model_list  = ['gauss']
 ses_list = ['ses-1', 'ses-2']
 
-roi_fit = 'demo-100'
+roi_fit = 'all'
 constraint = '--bgfs'
-nr_jobs = 5
+nr_jobs = 2
 # ************ LOOP THROUGH SUBJECTS ***************
 for sub in sub_list:
     # ************ LOOP THROUGH SESSIONS ***************
@@ -51,4 +51,4 @@ for sub in sub_list:
                 script_args = f"--sub {sub} --ses {ses} --task {task} --model {model} --roi_fit {roi_fit} --nr_jobs {nr_jobs} {constraint} --ow"
                 # print(f'{job} {script_path} {script_args}')
                 os.system(f'{job} {script_path} {script_args}')
-                sys.exit()
+                # sys.exit()

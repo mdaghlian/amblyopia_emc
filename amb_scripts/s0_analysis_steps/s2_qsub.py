@@ -26,12 +26,12 @@ if not os.path.exists(csf_dir):
     os.mkdir(csf_dir)
 sub_list = ['sub-03'] #, 'sub-01']#['sub-01', 'sub-02']
 task_list = ['CSFLE', 'CSFRE']
-ses_list = ['ses-1', ] # 'ses-2']
+ses_list = ['ses-2', ] # 'ses-2']
 
 roi_fit = 'all'
 constraint = '--bgfs'
 hrf = ''
-nr_jobs = 25
+nr_jobs = 15
 # model = 'straight'
 # ************ LOOP THROUGH SUBJECTS ***************
 for sub in sub_list:

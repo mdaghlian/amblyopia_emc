@@ -27,6 +27,59 @@ from dag_prf_utils.prfpy_functions import prfpy_params_dict
 def rgba(r,g,b,a):
     return [r/255,g/255,b/255,a]
 
+def ncsf_plt_fix_ecc_ax(ax, p, **kwargs):
+    do_x_axis = kwargs.get('do_x_axis', True)
+    if do_x_axis:
+        ax.set_xlabel('eccentricity (deg)')
+        ax.set_ylabel(p)
+        ax.set_xlim([0, 5])   
+        ax.set_xticks(np.linspace(0,5,6))   
+    # ax.set_box_aspect(2)
+    if p=='SFp':          
+        SFp_ylim = kwargs.get('SFp_ylim', [0,6])
+        ax.set_ylim(SFp_ylim)
+        ax.set_yticks([0,2,4,6])
+        ax.set_ylabel('SFp (c/deg)')
+    elif p=='aulcsf':
+        # aulcsf_ylim = kwargs.get('aulcsf_ylim', [0,2])
+        # ax.set_ylim(aulcsf_ylim)        
+        # ax.set_yticks([0,1,2])
+        # ax.set_ylabel('AUC (a.u.)')
+        ax.set_ylabel('normalized AUC (%)')
+        aulcsf_ylim = kwargs.get('aulcsf_ylim', [0,100])
+        ax.set_ylim(aulcsf_ylim)        
+        ax.set_yticks([0,50,100, 100])
+    elif p=='crf_exp':
+        # ax.set_ylim([0.4,10])
+        # ax.set_yscale('log')
+        # ax.set_yticks([0.4,1,10])
+        # ax.set_yticklabels([0.4,1,10])
+        # ax.set_ylabel('slope crf (a.u.)') 
+        ax.set_ylim([0.5,5])
+        ax.set_yscale('log')
+        ax.set_yticks([0.5,1,5])
+        ax.set_yticklabels([0.5,1,5])
+        ax.set_ylabel('slope crf (a.u.)') 
+
+    elif p=='sfmax':
+        ax.set_ylim([0,40])
+        # ax.set_yticks([0,1,2])
+        ax.set_ylabel('SF max (c/deg)')    
+    elif p=='CSp':
+        ax.set_ylim([20,200])
+        ax.set_yscale('log')
+        ax.set_ylabel('CSp (a.u.)')
+    elif p=='width_r':
+        ax.set_ylim([0,1.5])
+        ax.set_ylabel('width r (a.u.)')    
+    elif 'rsq' in p:
+        mod = p.split('-')[0]
+        ax.set_ylim([0,1])        
+        ax.set_ylabel(f'variance explained (%) for {mod}')
+    elif 'size_1' in p:
+        ax.set_ylim([0,2])
+        ax.set_ylabel('PRF size')
+    
 
 def show_plot_cols():
     plot_cols = get_plot_cols()
@@ -290,16 +343,25 @@ def ncsfplt_csf_curve(params, ax,  **kwargs):
     con_s_grid = np.logspace(np.log10(csenf_stim.CON_Ss[-1]),np.log10(csenf_stim.CON_Ss[0]), 2)
     log_sf_grid, con_s_grid = np.meshgrid(log_sf_grid,con_s_grid)    
     
-    _, csf_curves = csenf_exponential(
-        log_SF_grid = log_sf_grid, #csenf_stim.log_SF_grid, 
-        CON_S_grid  = con_s_grid, #csenf_stim.CON_S_grid,
+    csf_curves = asymmetric_parabolic_CSF(
+        SF_seq      = sfs_for_plot,
         width_r     = params['width_r'], 
         SFp         = params['SFp'], 
         CSp         = params['CSp'], 
         width_l     = params['width_l'], 
         crf_exp     = params['crf_exp'],
-        return_curve=True,
-        )       
+        # return_curve=True,
+        ).T       
+    # _, csf_curves = csenf_exponential(
+    #     log_SF_grid = log_sf_grid, #csenf_stim.log_SF_grid, 
+    #     CON_S_grid  = con_s_grid, #csenf_stim.CON_S_grid,
+    #     width_r     = params['width_r'], 
+    #     SFp         = params['SFp'], 
+    #     CSp         = params['CSp'], 
+    #     width_l     = params['width_l'], 
+    #     crf_exp     = params['crf_exp'],
+    #     return_curve=True,
+    #     )       
     dag_shaded_line(
         line_data=csf_curves, 
         xdata=sfs_for_plot, 
@@ -307,16 +369,16 @@ def ncsfplt_csf_curve(params, ax,  **kwargs):
         lw=1,
         **kwargs)
     if add_sampled_SF:
-        _, Scsf_curves = csenf_exponential(
-            log_SF_grid = csenf_stim.log_SF_grid, 
-            CON_S_grid  = csenf_stim.CON_S_grid,
-            width_r     = params['width_r'], 
-            SFp         = params['SFp'], 
-            CSp         = params['CSp'], 
-            width_l     = params['width_l'], 
-            crf_exp     = params['crf_exp'],
-            return_curve=True,
-            )       
+        # _, Scsf_curves = csenf_exponential(
+        #     log_SF_grid = csenf_stim.log_SF_grid, 
+        #     CON_S_grid  = csenf_stim.CON_S_grid,
+        #     width_r     = params['width_r'], 
+        #     SFp         = params['SFp'], 
+        #     CSp         = params['CSp'], 
+        #     width_l     = params['width_l'], 
+        #     crf_exp     = params['crf_exp'],
+        #     return_curve=True,
+        #     )       
         Sm_csf_curve = np.median(Scsf_curves, axis=1)
         if add_sampled_SF_cols:
             sampled_sf_cols = [sf_cols[key] for key in list(sf_cols.keys())]
@@ -340,16 +402,25 @@ def ncsfplt_csf_curve(params, ax,  **kwargs):
         sfs_for_plot = 10**log_sf_grid
         con_s_grid = np.logspace(np.log10(csenf_stim.CON_Ss[-1]),np.log10(csenf_stim.CON_Ss[0]), 2)
         log_sf_grid, con_s_grid = np.meshgrid(log_sf_grid,con_s_grid)    
-        _, csf_curves = csenf_exponential(
-            log_SF_grid = log_sf_grid, #csenf_stim.log_SF_grid, 
-            CON_S_grid  = con_s_grid, #csenf_stim.CON_S_grid,
+        # _, csf_curves = csenf_exponential(
+        #     log_SF_grid = log_sf_grid, #csenf_stim.log_SF_grid, 
+        #     CON_S_grid  = con_s_grid, #csenf_stim.CON_S_grid,
+        #     width_r     = params['width_r'], 
+        #     SFp         = params['SFp'], 
+        #     CSp         = params['CSp'], 
+        #     width_l     = params['width_l'], 
+        #     crf_exp     = params['crf_exp'],
+        #     return_curve=True,
+        #     )    
+        csf_curves = asymmetric_parabolic_CSF(
+            SF_seq      = sfs_for_plot,
             width_r     = params['width_r'], 
             SFp         = params['SFp'], 
             CSp         = params['CSp'], 
             width_l     = params['width_l'], 
             crf_exp     = params['crf_exp'],
-            return_curve=True,
-            )       
+            # return_curve=True,
+            ).T    
 
         dag_shaded_line(
             line_data=csf_curves, 

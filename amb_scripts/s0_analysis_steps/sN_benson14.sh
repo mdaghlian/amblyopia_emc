@@ -3,7 +3,8 @@ export FREESURFER_HOME=/packages/freesurfer/7.3.2
 export FS_LICENSE=/data1/projects/dumoulinlab/Lab_members/Kathi/programs/freesurfer-license/license.txt
 source $FREESURFER_HOME/SetUpFreeSurfer.sh
 export SUBJECTS_DIR=/data1/projects/dumoulinlab/Lab_members/Marcus/projects/amblyopia_emc/derivatives/freesurfer
-subs=("sub-01" "sub-02")
+# subs=("sub-01" "sub-02")
+subs=("sub-03")
 for subject in "${subs[@]}"; do
     # Check
     export SURF_DIR=/data1/projects/dumoulinlab/Lab_members/Marcus/projects/amblyopia_emc/derivatives/freesurfer/$subject

@@ -27,7 +27,7 @@ from dag_prf_utils.utils import *
 
 
 sub_list = ['sub-01', 'sub-02']
-
+sub_list = ['sub-03']
 fs_dir = '/data1/projects/dumoulinlab/Lab_members/Marcus/projects/amblyopia_emc/derivatives/freesurfer'
 b14_dict = {
     1:  'V1',   2: 'V2',    3: 'V3',    4: 'hV4',
@@ -46,8 +46,8 @@ for sub in sub_list:
     roi_line1 = f'#!ascii label  , from subject {sub} vox2ras=TkReg\n'
     b14_file = {}  
     b14_name = 'benson14_varea-0001'  
-    b14_file['lh'] = dag_find_file_in_folder([b14_name, '.label', 'lh'], label_dir)    
-    b14_file['rh'] = dag_find_file_in_folder([b14_name, '.label', 'rh'], label_dir)    
+    b14_file['lh'] = dag_find_file_in_folder([b14_name, '.label', 'lh'], label_dir, recursive=True)    
+    b14_file['rh'] = dag_find_file_in_folder([b14_name, '.label', 'rh'], label_dir, recursive=True)    
     for hemi in ['lh', 'rh']:
         for varea_i in b14_dict.keys():
             varea_n = b14_dict[varea_i]

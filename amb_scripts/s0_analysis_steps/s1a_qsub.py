@@ -22,7 +22,7 @@ prf_dir = opj(derivatives_dir, 'prf')
 
 sub_list = ['sub-03'] #, 'sub-02']
 task_list = ['pRFLE', 'pRFRE']
-ses_list = ['ses-1']#, 'ses-2']
+ses_list = ['ses-2',] #  'ses-2']
 
 roi_fit = 'all'
 constraint = '--bgfs'

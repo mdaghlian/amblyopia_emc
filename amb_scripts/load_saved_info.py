@@ -160,6 +160,18 @@ def amb_load_real_tc_run(sub, task_list, ses):
 
     return real_tc
 
+def amb_load_mepi(sub, task_list, ses):
+    if not isinstance(task_list, list):
+        task_list = [task_list]
+    this_dir = opj(psc_tc_dir, sub, ses)
+    mepi = {}
+    for task in task_list:
+        mepi_file = dag_find_file_in_folder([task, '_hemi-LR_desc-mepi.npy'], this_dir)
+        if isinstance(mepi_file, list):
+            print(f'Error, more than 1 match ({len(mepi_file)} files)')
+            sys.exit()
+        mepi[task] = np.load(mepi_file)
+    return mepi
 
 def amb_load_dm(dm_types):
     
