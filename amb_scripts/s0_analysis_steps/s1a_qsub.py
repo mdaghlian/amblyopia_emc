@@ -6,10 +6,6 @@
 '''
 ********* S1 *********
 run_prf_fit_G
-> Fit the gaussian model on the data. 
-> How to do the HRF? Different for each eye? 
-> Fix for one? Mean?
-...
 '''
 
 import os
@@ -20,9 +16,9 @@ source_data_dir = os.getenv("DIR_DATA_SOURCE")
 derivatives_dir = os.getenv("DIR_DATA_DERIV")
 prf_dir = opj(derivatives_dir, 'prf')
 
-sub_list = ['sub-03'] #, 'sub-02']
+sub_list = ['sub-01', 'sub-02', 'sub-03'] 
 task_list = ['pRFLE', 'pRFRE']
-ses_list = ['ses-2',] #  'ses-2']
+ses_list = ['ses-1', 'ses-2',]
 
 roi_fit = 'all'
 constraint = '--bgfs'

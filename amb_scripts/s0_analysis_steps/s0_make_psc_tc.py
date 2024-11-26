@@ -25,6 +25,7 @@ opj = os.path.join
 
 from amb_scripts.load_saved_info import *
 from dag_prf_utils.utils import *
+from dag_prf_utils.stats import dag_psc
 
 source_data_dir = '/data1/projects/dumoulinlab/Lab_members/Marcus/projects/amblyopia_emc/sourcedata'#
 derivatives_dir = '/data1/projects/dumoulinlab/Lab_members/Marcus/projects/amblyopia_emc/derivatives'
@@ -131,9 +132,6 @@ Args:
         run_ids.append(lsutils.split_bids_components(ii)["run"])
 
     run_ids = np.unique(np.array(run_ids))
-    if (sub=='sub-02') & ('CSF' in task):
-        print('ONLY DOING RUNS 1 & 2 & 3')
-        run_ids = ['1', '2', '3']
     # chunk into L/R pairs
     hemi_pairs = []
 
@@ -148,7 +146,7 @@ Args:
     tc_data = []
     mepi_data = []
     for pair in hemi_pairs:        
-        hemi_data = [lsutils.percent_change(np.load(pair[ix]), 0, baseline=baseline) for ix in range(len(pair))]                
+        hemi_data = [dag_psc(ts_in=np.load(pair[ix]), baseline_pt=baseline) for ix in range(len(pair))]                        
         tc_data.append(np.hstack(hemi_data))
         mepi = [np.mean(np.load(pair[ix]), axis=0) for ix in range(len(pair))]        
         mepi_data.append(np.hstack(mepi))
@@ -164,21 +162,6 @@ Args:
     h2_ts = np.mean(tc_data[half_1:,:,:], axis=0)
     print(h1_ts.shape)
     print(h2_ts.shape)
-
-    std_mask     = h1_ts.std(axis=0) != 0
-    std_mask    &= h2_ts.std(axis=0) != 0
-    std_idx = np.where(std_mask)[0]
-    # run_correlation = np.zeros(h1_ts.shape[-1])
-    # i_count = 0
-    # for i in std_idx:
-    #     run_correlation[i] = np.corrcoef(h1_ts[:, i], h2_ts[:, i])[0,1]
-    #     i_count += 1
-    #     if i_count % 5000 == 0:
-    #         print(f'Calculating correlation for voxel {i_count} of {h1_ts.shape[0]}')
-
-    # print(f'Run correlation: {run_correlation}')
-    # # -> save it
-    # np.save(opj(outputdir, f'{out}_hemi-LR_desc-run_corr.npy'),run_correlation)
 
     # take median of data
     m_tc_data = np.median(np.array(tc_data), 0)
